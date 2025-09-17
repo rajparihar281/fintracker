@@ -679,6 +679,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _expense = _payments
                 .where((p) => p.type == PaymentType.debit)
                 .fold(0, (sum, p) => sum + p.amount);
+
+            _monthlyExpenses = _calculateMonthlyExpenses(_payments);
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -693,6 +695,18 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(content: Text('Error importing CSV: $e')),
       );
     }
+  }
+
+  List<double> _calculateMonthlyExpenses(List<Payment> payments) {
+    final List<double> monthly = List.generate(12, (_) => 0.0);
+
+    for (var p in payments) {
+      if (p.type == PaymentType.debit) {
+        monthly[p.datetime.month - 1] += p.amount;
+      }
+    }
+
+    return monthly;
   }
 
   Future<bool?> _confirmDeleteLocalTransactions(
