@@ -584,7 +584,11 @@ class _HomeScreenState extends State<HomeScreen> {
               amount: amount,
               type: type == "credit" ? PaymentType.credit : PaymentType.debit,
               datetime: DateTime.now(),
-              title: "Imported Payment",
+              title: row.length > 2 && row[2].toString().trim().isNotEmpty
+                  ? row[7].toString()
+                  : (type == PaymentType.debit
+                      ? "Imported Expense"
+                      : "Imported Income"),
               description: "",
               autoCategorizationEnabled: false,
             );
@@ -592,6 +596,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Format 2: Debit, Credit (2 columns only)
             double debit = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
             double credit = double.tryParse(row[1]?.toString() ?? '0.0') ?? 0.0;
+            final type = debit > 0 ? PaymentType.debit : PaymentType.credit;
 
             payment = Payment(
               id: nextId++,
@@ -616,7 +621,11 @@ class _HomeScreenState extends State<HomeScreen> {
               amount: debit > 0 ? debit : credit,
               type: debit > 0 ? PaymentType.debit : PaymentType.credit,
               datetime: DateTime.now(),
-              title: "Imported Payment",
+              title: row.length > 2 && row[2].toString().trim().isNotEmpty
+                  ? row[7].toString()
+                  : (type == PaymentType.debit
+                      ? "Imported Expense"
+                      : "Imported Income"),
               description: "",
               autoCategorizationEnabled: false,
             );
