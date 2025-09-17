@@ -101,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
             CustomCalender(updateDateRange: _updateDateRange)));
   }
 
-  void _fetchTransactions() async {
+  Future<void> _fetchTransactions() async {
     List<Payment> trans;
 
     // Fetch the selected tag IDs
@@ -539,17 +539,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
         List<Payment> parsedPayments = [];
 
-        // ✅ call your existing validateCSV function
         if (!validateCSV(csvData)) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Invalid CSV format. Please check the file.'),
             ),
           );
-          return; // Exit early if validation fails
+          return;
         }
 
-        // Calculate next ID based on existing payments
         int nextId = _payments.isEmpty
             ? 1
             : _payments.map((p) => p.id!).reduce((a, b) => a > b ? a : b) + 1;
@@ -659,7 +657,6 @@ class _HomeScreenState extends State<HomeScreen> {
           );
 
           setState(() {
-            // Add new payments and update existing ones
             _payments.addAll(newTransactions);
             for (var updated in updatedTransactions) {
               _payments.removeWhere(
@@ -668,17 +665,26 @@ class _HomeScreenState extends State<HomeScreen> {
               _payments.add(updated);
             }
 
-            // Optionally delete local-only transactions
             if (deleteLocal == true) {
               _payments.removeWhere(
                 (local) => localOnlyTransactions.contains(local),
               );
             }
+
+            // ✅ Recalculate totals after modifying _payments
+            _income = _payments
+                .where((p) => p.type == PaymentType.credit)
+                .fold(0, (sum, p) => sum + p.amount);
+
+            _expense = _payments
+                .where((p) => p.type == PaymentType.debit)
+                .fold(0, (sum, p) => sum + p.amount);
           });
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Payments imported successfully!')),
           );
+          setState(() {});
         }
       }
     } catch (e) {
