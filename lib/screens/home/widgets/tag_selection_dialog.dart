@@ -43,19 +43,20 @@ class _TagsSelectionDialogState extends State<TagsSelectionDialog> {
   void saveTag(Tag tag) async {
     try {
       var value = await tagDao.upsert(tag);
-      print("Tags updated: ${value}");
+      print("Tags updated: $value");
       await loadTags();
       globalEvent.emit("tag_update");
-    }catch(e) {
+    } catch (e) {
       print("Error Tag:  $e");
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     filteredTags = allTags.where((tag) {
-      return tag.name.toLowerCase().contains(searchController.text.toLowerCase());
+      return tag.name
+          .toLowerCase()
+          .contains(searchController.text.toLowerCase());
     }).toList();
     return SizedBox(
       height: 500,
@@ -111,8 +112,7 @@ class _TagsSelectionDialogState extends State<TagsSelectionDialog> {
                               onPressed: () async {
                                 if (formKey.currentState?.validate() ?? false) {
                                   final newTag = Tag(
-                                    id: DateTime.now()
-                                        .millisecondsSinceEpoch,
+                                    id: DateTime.now().millisecondsSinceEpoch,
                                     name: tagNameController.text,
                                   );
                                   saveTag(newTag);
@@ -143,61 +143,68 @@ class _TagsSelectionDialogState extends State<TagsSelectionDialog> {
               onChanged: (value) {
                 setState(() {});
               },
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Search...',
               ),
             ),
-            const SizedBox(height: 10,),
+            const SizedBox(
+              height: 10,
+            ),
             filteredTags.isEmpty
                 ? const Text('No tags exist.\nTap + icon to create a new tag.')
                 : SizedBox(
-              height: 250,
-              child: SingleChildScrollView(
-                child: Column(
-                  children: List.generate(
-                    filteredTags.length,
-                        (index) {
-                      final tag = filteredTags[index];
+                    height: 250,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: List.generate(
+                          filteredTags.length,
+                          (index) {
+                            final tag = filteredTags[index];
 
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: Material(
-                          elevation: 2,
-                          borderRadius: BorderRadius.circular(10),
-                          color: Colors.grey[100],
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: CheckboxListTile(
-                                  title: Text(
-                                    "# ${tag.name}",
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                  value: selectedTags.map((e) => e.id).contains(tag.id),
-                                  onChanged: (enabled) => setState(
-                                        () => enabled ?? false
-                                        ? selectedTags.add(tag)
-                                        : selectedTags.remove(tag),
-                                  ),
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 4.0),
+                              child: Material(
+                                elevation: 2,
+                                borderRadius: BorderRadius.circular(10),
+                                color: Colors.grey[100],
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: CheckboxListTile(
+                                        title: Text(
+                                          "# ${tag.name}",
+                                          style: const TextStyle(fontSize: 13),
+                                        ),
+                                        value: selectedTags
+                                            .map((e) => e.id)
+                                            .contains(tag.id),
+                                        onChanged: (enabled) => setState(
+                                          () => enabled ?? false
+                                              ? selectedTags.add(tag)
+                                              : selectedTags.remove(tag),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                        icon: const Icon(
+                                          Icons.delete,
+                                          color: Colors.red,
+                                        ),
+                                        onPressed: () async {
+                                          await tagDao.delete(tag.id!);
+                                          loadTags();
+                                          setState(() {});
+                                        })
+                                  ],
                                 ),
                               ),
-                              IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.red,),
-                                  onPressed: () async {
-                                    await tagDao.delete(tag.id!);
-                                    loadTags();
-                                    setState(() {});
-                                  }
-                              )
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                      );
-                    },
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ),
           ],
         ),
         actions: [

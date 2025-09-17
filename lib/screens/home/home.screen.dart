@@ -24,7 +24,6 @@ import 'package:intl/intl.dart';
 import 'package:easy_date_timeline/easy_date_timeline.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:collection/collection.dart';
 
@@ -445,10 +444,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Share the file via WhatsApp
                   final result = await Share.shareXFiles([xfile],
                       text: "Here is the CSV file of Payment");
-                  if (result.status == ShareResultStatus.success)
+                  if (result.status == ShareResultStatus.success) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Shared Successfully')),
                     );
+                  }
                   await file.delete();
                   Navigator.of(context).pop(); // Close the dialog
                 },
@@ -461,6 +461,64 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       print("Error while exporting CSV: $e");
     }
+  }
+
+  Future<String?> _showImportFormatDialog(BuildContext context) async {
+    String? importFormat = "Amount, Type"; // Default format
+
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text("Select Import Format"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text("Amount, Type"),
+                      value: "Amount, Type",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setDialogState(() {
+                          importFormat = value;
+                        });
+                      },
+                    ),
+                    RadioListTile<String>(
+                      title: const Text("Debit, Credit"),
+                      value: "Debit, Credit",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setDialogState(() {
+                          importFormat = value;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(null);
+                  },
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(importFormat);
+                  },
+                  child: const Text("Confirm"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> importPaymentsFromCSV(BuildContext context) async {
@@ -480,11 +538,13 @@ class _HomeScreenState extends State<HomeScreen> {
         List<List<dynamic>> csvData = const CsvToListConverter().convert(input);
 
         List<Payment> parsedPayments = [];
-        // Validate CSV Data
+
+        // ✅ call your existing validateCSV function
         if (!validateCSV(csvData)) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('Invalid CSV format. Please check the file.')),
+              content: Text('Invalid CSV format. Please check the file.'),
+            ),
           );
           return; // Exit early if validation fails
         }
@@ -497,76 +557,70 @@ class _HomeScreenState extends State<HomeScreen> {
         for (int i = 1; i < csvData.length; i++) {
           var row = csvData[i];
           Payment? payment;
-          double amount = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
+
           if (selectedFormat == "Amount, Type") {
-            // Format 1: Amount, Type
+            // Format 1: Amount, Type (2 columns only)
+            double amount = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
+            String type = row[1]?.toString().toLowerCase() ?? "debit";
+
             payment = Payment(
-              id: int.tryParse(row[0]?.toString() ?? ''),
+              id: nextId++,
               account: Account(
-                id: null, // Assuming account ID isn't available in CSV
-                name: row[1]?.toString() ?? '',
-                holderName: row[2]?.toString() ?? '',
-                accountNumber: row[3]?.toString() ?? '',
-                icon: Icons.account_balance, // Default icon
-                color: Colors.blue, // Default color, adjust as necessary
+                id: null,
+                name: "",
+                holderName: "",
+                accountNumber: "",
+                icon: Icons.account_balance,
+                color: Colors.blue,
                 isDefault: false,
                 income: 0.0,
                 expense: 0.0,
                 balance: 0.0,
               ),
               category: Category(
-                  id: null, // Assuming category ID isn't available in CSV
-                  name: row[4]?.toString() ?? '',
-                  icon: Icons.category, // Default icon
-                  color: amount > 0
-                      ? Colors.green
-                      : Colors.red // Default color, adjust as necessary
-                  ),
+                id: null,
+                name: "Imported",
+                icon: Icons.category,
+                color: amount > 0 ? Colors.green : Colors.red,
+              ),
               amount: amount,
-              type: row[6]?.toString().toLowerCase() == "credit"
-                  ? PaymentType.credit
-                  : PaymentType.debit,
-              datetime: DateTime.tryParse(
-                      row[7]?.toString() ?? DateTime.now().toString()) ??
-                  DateTime.now(),
-              title: row[8]?.toString() ?? "Imported Payment",
-              description: row[9]?.toString() ?? "",
-              autoCategorizationEnabled:
-                  row[10]?.toString().toLowerCase() == "true",
+              type: type == "credit" ? PaymentType.credit : PaymentType.debit,
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
             );
           } else if (selectedFormat == "Debit, Credit") {
-            // Format 2: Debit, Credit
-            double debit = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
-            double credit = double.tryParse(row[6]?.toString() ?? '0.0') ?? 0.0;
+            // Format 2: Debit, Credit (2 columns only)
+            double debit = double.tryParse(row[0]?.toString() ?? '0.0') ?? 0.0;
+            double credit = double.tryParse(row[1]?.toString() ?? '0.0') ?? 0.0;
+
             payment = Payment(
-              id: int.tryParse(row[0]?.toString() ?? ''),
+              id: nextId++,
               account: Account(
-                id: null, // Assuming account ID isn't available in CSV
-                name: row[1]?.toString() ?? '',
-                holderName: row[2]?.toString() ?? '',
-                accountNumber: row[3]?.toString() ?? '',
-                icon: Icons.account_balance, // Default icon
-                color: Colors.blue, // Default color, adjust as necessary
+                id: null,
+                name: "",
+                holderName: "",
+                accountNumber: "",
+                icon: Icons.account_balance,
+                color: Colors.blue,
                 isDefault: false,
                 income: 0.0,
                 expense: 0.0,
                 balance: 0.0,
               ),
               category: Category(
-                id: null, // Assuming category ID isn't available in CSV
-                name: row[4]?.toString() ?? '',
-                icon: Icons.category, // Default icon
+                id: null,
+                name: "Imported",
+                icon: Icons.category,
                 color: credit > 0.0 ? Colors.green : Colors.red,
               ),
               amount: debit > 0 ? debit : credit,
               type: debit > 0 ? PaymentType.debit : PaymentType.credit,
-              datetime: DateTime.tryParse(
-                      row[7]?.toString() ?? DateTime.now().toString()) ??
-                  DateTime.now(),
-              title: row[8]?.toString() ?? "Imported Payment",
-              description: row[9]?.toString() ?? "",
-              autoCategorizationEnabled:
-                  row[10]?.toString().toLowerCase() == "true",
+              datetime: DateTime.now(),
+              title: "Imported Payment",
+              description: "",
+              autoCategorizationEnabled: false,
             );
           }
 
@@ -580,7 +634,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         for (var csvPayment in parsedPayments) {
           Payment? match = _payments.firstWhereOrNull(
-              (local) => csvPayment.datetime.isAtSameMomentAs(local.datetime));
+            (local) => csvPayment.datetime.isAtSameMomentAs(local.datetime),
+          );
           if (match != null) {
             updatedTransactions.add(csvPayment);
             localOnlyTransactions.remove(match);
@@ -590,14 +645,14 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         // Show import summary
-        bool? proceed = await _showImportSummaryDialog(
+        bool? proceed = await showImportSummaryDialog(
           context,
           newTransactions: newTransactions,
           updatedTransactions: updatedTransactions,
           localOnlyTransactions: localOnlyTransactions,
         );
 
-        if (proceed == true && localOnlyTransactions.length > 0) {
+        if (proceed == true) {
           bool? deleteLocal = await _confirmDeleteLocalTransactions(
             context,
             localOnlyTransactions.length,
@@ -608,18 +663,19 @@ class _HomeScreenState extends State<HomeScreen> {
             _payments.addAll(newTransactions);
             for (var updated in updatedTransactions) {
               _payments.removeWhere(
-                  (local) => updated.datetime.isAtSameMomentAs(local.datetime));
+                (local) => updated.datetime.isAtSameMomentAs(local.datetime),
+              );
               _payments.add(updated);
             }
 
             // Optionally delete local-only transactions
             if (deleteLocal == true) {
               _payments.removeWhere(
-                  (local) => localOnlyTransactions.contains(local));
+                (local) => localOnlyTransactions.contains(local),
+              );
             }
           });
 
-          // Notify user of success
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Payments imported successfully!')),
           );
@@ -656,53 +712,51 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool validateCSV(List<List<dynamic>> csvData) {
-    if (csvData.isEmpty || csvData[0].length < 2) {
-      return false; // Invalid structure
-    }
+    if (csvData.isEmpty) return false;
 
-    // Check for both formats
+    final headers = csvData[0].map((e) => e.toString().toLowerCase()).toList();
+
     bool hasDebitCreditFormat =
-        csvData[0].contains('Debit') && csvData[0].contains('Credit');
+        headers.contains('debit') && headers.contains('credit');
+    bool hasAmountTypeFormat =
+        headers.contains('amount') && headers.contains('type');
+
+    if (!hasDebitCreditFormat && !hasAmountTypeFormat) {
+      return false; // Unknown format
+    }
 
     for (int i = 1; i < csvData.length; i++) {
       var row = csvData[i];
 
-      // Check for 'Amount' and 'Type' format
-      if (!hasDebitCreditFormat) {
-        // Validate amount
-        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
-          return false; // Invalid amount
-        }
-        // Validate type (credit or debit)
-        if (row[6] == null ||
-            !["credit", "debit"].contains(row[6].toString().toLowerCase())) {
-          return false; // Invalid type
-        }
-      } else {
-        // Validate Debit and Credit
-        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
-          return false; // Invalid Debit amount
-        }
-        if (row[6] == null || double.tryParse(row[6].toString()) == null) {
-          return false; // Invalid Credit amount
-        }
-      }
+      if (hasAmountTypeFormat) {
+        // ✅ Only 2 columns
+        if (row.length < 2) return false;
 
-      // Validate Account Number (if present)
-      if (row[3] == null || row[3].toString().isEmpty) {
-        return false; // Invalid Account Number
-      }
+        if (double.tryParse(row[0].toString()) == null) return false;
 
-      // Validate Date
-      if (row[7] == null || DateTime.tryParse(row[7].toString()) == null) {
-        return false; // Invalid Date
+        if (!["income", "expense", "credit", "debit"]
+            .contains(row[1].toString().toLowerCase())) {
+          return false;
+        }
+      } else if (hasDebitCreditFormat) {
+        // ✅ At least 8 columns
+        if (row.length < 8) return false;
+
+        if (double.tryParse(row[5].toString()) == null &&
+            double.tryParse(row[6].toString()) == null) {
+          return false;
+        }
+
+        if (row[3] == null || row[3].toString().isEmpty) return false;
+
+        if (DateTime.tryParse(row[7].toString()) == null) return false;
       }
     }
 
     return true;
   }
 
-  Future<bool?> _showImportSummaryDialog(
+  Future<bool?> showImportSummaryDialog(
     BuildContext context, {
     required List<Payment> newTransactions,
     required List<Payment> updatedTransactions,
@@ -731,72 +785,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<String?> _showImportFormatDialog(BuildContext context) async {
-    String? importFormat = "Amount, Type"; // Default format
-
-    return await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Select Import Format"),
-          content: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (BuildContext context, StateSetter setState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioListTile<String>(
-                      title: const Text("Amount, Type"),
-                      value: "Amount, Type",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setState(() {
-                          importFormat = value; // Update the state
-                        });
-                      },
-                    ),
-                    RadioListTile<String>(
-                      title: const Text("Debit, Credit"),
-                      value: "Debit, Credit",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setState(() {
-                          importFormat = value; // Update the state
-                        });
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(null); // Cancel the dialog
-              },
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (importFormat != null) {
-                  Navigator.of(context).pop(importFormat); // Confirm selection
-                } else {
-                  // Optionally show a message if no format is selected
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Please select an import format.')),
-                  );
-                }
-              },
-              child: const Text("Confirm"),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -850,7 +838,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // TagsStrip(),
-          _buildTagsStrip(context),
+          buildTagsStrip(context),
           Container(
             margin:
                 const EdgeInsets.only(left: 15, right: 15, bottom: 15, top: 0),
@@ -1109,7 +1097,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildTagsStrip(BuildContext context) {
+  Widget buildTagsStrip(BuildContext context) {
     return tags.isEmpty
         ? const SizedBox()
         : Column(

@@ -1,5 +1,3 @@
-import 'package:fintracker/widgets/buttons/button.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Usage: I tap the "Next" button
