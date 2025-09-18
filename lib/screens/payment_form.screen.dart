@@ -2,7 +2,6 @@ import 'package:events_emitter/listener.dart';
 import 'package:fintracker/dao/account_dao.dart';
 import 'package:fintracker/dao/category_dao.dart';
 import 'package:fintracker/dao/payment_dao.dart';
-import 'package:fintracker/dao/tag_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
@@ -16,7 +15,6 @@ import 'package:fintracker/widgets/dialog/confirm.modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
 
 import '../model/tag.model.dart';
 import 'home/widgets/tag_selection_dialog.dart';
