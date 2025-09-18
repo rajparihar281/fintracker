@@ -60,7 +60,7 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
             const SizedBox(
               height: 15,
             ),
-            Container(
+            SizedBox(
               width: size.width * 0.9,
               child: const Text(
                 "Default Rules",
@@ -84,24 +84,31 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
                                 .copyWith(dividerColor: Colors.transparent),
                             child: ExpansionTile(
                               expandedAlignment: Alignment.centerLeft,
-                              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                              expandedCrossAxisAlignment:
+                                  CrossAxisAlignment.start,
                               title: Text(
-                                rule['title'],style: const TextStyle(fontWeight: FontWeight.bold,fontSize: 18),
+                                rule['title'],
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 18),
                               ),
                               children: (rule['items'] as List)
                                   .map(
                                     (item) => Padding(
                                       padding: const EdgeInsets.all(8.0),
-                                      child: Text(item,),
+                                      child: Text(
+                                        item,
+                                      ),
                                     ),
                                   )
                                   .toList(),
                             ),
                           ),
-                          listOfDefaultRules.length-1 != index ? const Divider(
-                            color: Colors.grey,
-                            thickness: 1.5,
-                          ) : const SizedBox(),
+                          listOfDefaultRules.length - 1 != index
+                              ? const Divider(
+                                  color: Colors.grey,
+                                  thickness: 1.5,
+                                )
+                              : const SizedBox(),
                         ],
                       );
                     }),
@@ -110,7 +117,7 @@ class _AddUserSettingsScreenState extends State<AddUserSettingsScreen> {
             const SizedBox(
               height: 15,
             ),
-            Container(
+            SizedBox(
               width: size.width * 0.9,
               child: const Text(
                 "Your Rules",

@@ -422,7 +422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () async {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (builder) => AddUserSettingsScreen(),
+                    builder: (builder) => const AddUserSettingsScreen(),
                   ),
                 );
               },

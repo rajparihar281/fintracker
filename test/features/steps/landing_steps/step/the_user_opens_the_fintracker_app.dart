@@ -12,10 +12,10 @@ Future<void> theUserOpensTheFintrackerApp(WidgetTester tester) async {
   await tester.pumpWidget(
     MaterialApp(
       home: LandingPage(
-        onGetStarted: ()async {
+        onGetStarted: () async {
           // This callback can be empty for now or filled with navigation logic later
-          final widget = App();
-            await tester.pumpWidget(widget);
+          const widget = App();
+          await tester.pumpWidget(widget);
         },
       ),
     ),

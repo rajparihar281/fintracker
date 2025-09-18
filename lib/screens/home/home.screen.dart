@@ -24,7 +24,6 @@ import 'package:intl/intl.dart';
 import 'package:easy_date_timeline/easy_date_timeline.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:collection/collection.dart';
 
@@ -102,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
             CustomCalender(updateDateRange: _updateDateRange)));
   }
 
-  void _fetchTransactions() async {
+  Future<void> _fetchTransactions() async {
     List<Payment> trans;
 
     // Fetch the selected tag IDs
@@ -445,10 +444,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Share the file via WhatsApp
                   final result = await Share.shareXFiles([xfile],
                       text: "Here is the CSV file of Payment");
-                  if (result.status == ShareResultStatus.success)
+                  if (result.status == ShareResultStatus.success) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Shared Successfully')),
                     );
+                  }
                   await file.delete();
                   Navigator.of(context).pop(); // Close the dialog
                 },
@@ -463,124 +463,237 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<String?> _showImportFormatDialog(BuildContext context) async {
+    String? importFormat = "Amount, Type"; // Default format
+
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text("Select Import Format"),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text("Amount, Type"),
+                      value: "Amount, Type",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setDialogState(() {
+                          importFormat = value;
+                        });
+                      },
+                    ),
+                    RadioListTile<String>(
+                      title: const Text("Debit, Credit"),
+                      value: "Debit, Credit",
+                      groupValue: importFormat,
+                      onChanged: (String? value) {
+                        setDialogState(() {
+                          importFormat = value;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(null);
+                  },
+                  child: const Text("Cancel"),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(importFormat);
+                  },
+                  child: const Text("Confirm"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> importPaymentsFromCSV(BuildContext context) async {
     try {
       String? selectedFormat = await _showImportFormatDialog(context);
       if (selectedFormat == null) return;
 
-      // Pick CSV file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
       );
 
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
-        final input = await file.readAsString();
-        List<List<dynamic>> csvData = const CsvToListConverter().convert(input);
+      if (result == null || result.files.single.path == null) return;
 
-        List<Payment> parsedPayments = [];
-        // Validate CSV Data
-        if (!validateCSV(csvData)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Invalid CSV format. Please check the file.')),
-          );
-          return; // Exit early if validation fails
+      File file = File(result.files.single.path!);
+      final input = await file.readAsString();
+
+      List<List<dynamic>> csvData = parseCSVContent(input);
+
+      bool isValid = validateCSV(csvData);
+      if (!isValid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Invalid CSV format. Please check the file.')),
+        );
+        return;
+      }
+
+      final monthMap = {
+        'JAN': 'Jan',
+        'FEB': 'Feb',
+        'MAR': 'Mar',
+        'APR': 'Apr',
+        'MAY': 'May',
+        'JUN': 'Jun',
+        'JUL': 'Jul',
+        'AUG': 'Aug',
+        'SEP': 'Sep',
+        'OCT': 'Oct',
+        'NOV': 'Nov',
+        'DEC': 'Dec',
+      };
+
+      DateTime? tryParseDate(String raw) {
+        if (raw == null) return null;
+        String s = raw.replaceAll('"', '').trim();
+
+        s = s.replaceAllMapped(RegExp(r'-(\w{3})-'), (m) {
+          final up = m.group(1)!.toUpperCase();
+          return '-${monthMap[up] ?? (up[0] + up.substring(1).toLowerCase())}-';
+        });
+
+        final formats = <DateFormat>[
+          DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US"),
+          DateFormat("dd-MMM-yyyy HH:mm", "en_US"),
+          DateFormat("dd-MM-yyyy HH:mm:ss"),
+          DateFormat("dd-MM-yyyy HH:mm"),
+        ];
+
+        for (var f in formats) {
+          try {
+            return f.parseStrict(s);
+          } catch (_) {}
         }
 
-        // Calculate next ID based on existing payments
-        int nextId = _payments.isEmpty
-            ? 1
-            : _payments.map((p) => p.id!).reduce((a, b) => a > b ? a : b) + 1;
+        try {
+          return DateTime.parse(s);
+        } catch (_) {
+          return null;
+        }
+      }
 
-        for (int i = 1; i < csvData.length; i++) {
-          var row = csvData[i];
-          Payment? payment;
-          double amount = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
-          if (selectedFormat == "Amount, Type") {
-            // Format 1: Amount, Type
-            payment = Payment(
-              id: int.tryParse(row[0]?.toString() ?? ''),
-              account: Account(
-                id: null, // Assuming account ID isn't available in CSV
-                name: row[1]?.toString() ?? '',
-                holderName: row[2]?.toString() ?? '',
-                accountNumber: row[3]?.toString() ?? '',
-                icon: Icons.account_balance, // Default icon
-                color: Colors.blue, // Default color, adjust as necessary
-                isDefault: false,
-                income: 0.0,
-                expense: 0.0,
-                balance: 0.0,
-              ),
-              category: Category(
-                  id: null, // Assuming category ID isn't available in CSV
-                  name: row[4]?.toString() ?? '',
-                  icon: Icons.category, // Default icon
-                  color: amount > 0
-                      ? Colors.green
-                      : Colors.red // Default color, adjust as necessary
-                  ),
-              amount: amount,
-              type: row[6]?.toString().toLowerCase() == "credit"
-                  ? PaymentType.credit
-                  : PaymentType.debit,
-              datetime: DateTime.tryParse(
-                      row[7]?.toString() ?? DateTime.now().toString()) ??
-                  DateTime.now(),
-              title: row[8]?.toString() ?? "Imported Payment",
-              description: row[9]?.toString() ?? "",
-              autoCategorizationEnabled:
-                  row[10]?.toString().toLowerCase() == "true",
-            );
-          } else if (selectedFormat == "Debit, Credit") {
-            // Format 2: Debit, Credit
-            double debit = double.tryParse(row[5]?.toString() ?? '0.0') ?? 0.0;
-            double credit = double.tryParse(row[6]?.toString() ?? '0.0') ?? 0.0;
-            payment = Payment(
-              id: int.tryParse(row[0]?.toString() ?? ''),
-              account: Account(
-                id: null, // Assuming account ID isn't available in CSV
-                name: row[1]?.toString() ?? '',
-                holderName: row[2]?.toString() ?? '',
-                accountNumber: row[3]?.toString() ?? '',
-                icon: Icons.account_balance, // Default icon
-                color: Colors.blue, // Default color, adjust as necessary
-                isDefault: false,
-                income: 0.0,
-                expense: 0.0,
-                balance: 0.0,
-              ),
-              category: Category(
-                id: null, // Assuming category ID isn't available in CSV
-                name: row[4]?.toString() ?? '',
-                icon: Icons.category, // Default icon
-                color: credit > 0.0 ? Colors.green : Colors.red,
-              ),
-              amount: debit > 0 ? debit : credit,
-              type: debit > 0 ? PaymentType.debit : PaymentType.credit,
-              datetime: DateTime.tryParse(
-                      row[7]?.toString() ?? DateTime.now().toString()) ??
-                  DateTime.now(),
-              title: row[8]?.toString() ?? "Imported Payment",
-              description: row[9]?.toString() ?? "",
-              autoCategorizationEnabled:
-                  row[10]?.toString().toLowerCase() == "true",
-            );
+      double parseAmount(String? raw) {
+        if (raw == null) return 0.0;
+        String s = raw.toString().replaceAll('"', '').trim();
+        s = s.replaceAll(',', '');
+        return double.tryParse(s) ?? 0.0;
+      }
+
+      bool isSameTransaction(Payment local, Payment csvPayment) {
+        final amountEqual = (local.amount - csvPayment.amount).abs() < 0.01;
+        final sameType = local.type == csvPayment.type;
+        final sameTitle = local.title.trim().toLowerCase() ==
+            csvPayment.title.trim().toLowerCase();
+        final sameDay = local.datetime.year == csvPayment.datetime.year &&
+            local.datetime.month == csvPayment.datetime.month &&
+            local.datetime.day == csvPayment.datetime.day;
+        return amountEqual && sameType && sameTitle && sameDay;
+      }
+
+      List<Payment> parsedPayments = [];
+      int nextId = _payments.isEmpty
+          ? 1
+          : _payments.map((p) => p.id!).reduce((a, b) => a > b ? a : b) + 1;
+
+      for (int i = 1; i < csvData.length; i++) {
+        final row = csvData[i];
+
+        if (row.length < 4) {
+          continue;
+        }
+
+        final rawDate = row[0]?.toString() ?? '';
+        final title = row[1]?.toString().replaceAll('"', '').trim() ?? '';
+        final debit = parseAmount(row[2]?.toString());
+        final credit = parseAmount(row[3]?.toString());
+
+        final datetime = tryParseDate(rawDate);
+        if (datetime == null) {
+          continue;
+        }
+
+        PaymentType type;
+        double amount;
+        if (debit > 0) {
+          type = PaymentType.debit;
+          amount = debit;
+        } else if (credit > 0) {
+          type = PaymentType.credit;
+          amount = credit;
+        } else {
+          continue;
+        }
+
+        final payment = Payment(
+          id: nextId++,
+          account: Account(
+            id: null,
+            name: "",
+            holderName: "",
+            accountNumber: "",
+            icon: Icons.account_balance,
+            color: Colors.blue,
+            isDefault: false,
+            income: 0.0,
+            expense: 0.0,
+            balance: 0.0,
+          ),
+          category: Category(
+            id: null,
+            name: "Imported",
+            icon: Icons.category,
+            color: type == PaymentType.credit ? Colors.green : Colors.red,
+          ),
+          amount: amount,
+          type: type,
+          datetime: datetime,
+          title: title.isNotEmpty
+              ? title
+              : (type == PaymentType.debit
+                  ? "Imported Expense"
+                  : "Imported Income"),
+          description: "",
+          autoCategorizationEnabled: false,
+        );
+
+        parsedPayments.add(payment);
+      }
+
+      List<Payment> newTransactions = [];
+      List<Payment> updatedTransactions = [];
+      List<Payment> localOnlyTransactions = List.from(_payments);
+
+      if (_payments.isEmpty) {
+        newTransactions = List.from(parsedPayments);
+      } else {
+        for (var csvPayment in parsedPayments) {
+          Payment? match;
+          for (var local in _payments) {
+            if (isSameTransaction(local, csvPayment)) {
+              match = local;
+              break;
+            }
           }
 
-          if (payment != null) parsedPayments.add(payment);
-        }
-
-        // Handle new, updated, and local-only transactions
-        List<Payment> newTransactions = [];
-        List<Payment> updatedTransactions = [];
-        List<Payment> localOnlyTransactions = List.from(_payments);
-
-        for (var csvPayment in parsedPayments) {
-          Payment? match = _payments.firstWhereOrNull(
-              (local) => csvPayment.datetime.isAtSameMomentAs(local.datetime));
           if (match != null) {
             updatedTransactions.add(csvPayment);
             localOnlyTransactions.remove(match);
@@ -588,49 +701,78 @@ class _HomeScreenState extends State<HomeScreen> {
             newTransactions.add(csvPayment);
           }
         }
+      }
 
-        // Show import summary
-        bool? proceed = await _showImportSummaryDialog(
-          context,
-          newTransactions: newTransactions,
-          updatedTransactions: updatedTransactions,
-          localOnlyTransactions: localOnlyTransactions,
-        );
+      bool? proceed = await showImportSummaryDialog(
+        context,
+        newTransactions: newTransactions,
+        updatedTransactions: updatedTransactions,
+        localOnlyTransactions: localOnlyTransactions,
+      );
 
-        if (proceed == true && localOnlyTransactions.length > 0) {
-          bool? deleteLocal = await _confirmDeleteLocalTransactions(
-            context,
-            localOnlyTransactions.length,
+      if (proceed != true) {
+        return;
+      }
+
+      bool? deleteLocal = await _confirmDeleteLocalTransactions(
+        context,
+        localOnlyTransactions.length,
+      );
+
+      setState(() {
+        _payments.addAll(newTransactions);
+
+        for (var updated in updatedTransactions) {
+          final idx = _payments.indexWhere(
+            (local) => local.datetime.isAtSameMomentAs(updated.datetime),
           );
+          if (idx >= 0) {
+            _payments[idx] = updated;
+          } else {
+            _payments.add(updated);
+          }
+        }
 
-          setState(() {
-            // Add new payments and update existing ones
-            _payments.addAll(newTransactions);
-            for (var updated in updatedTransactions) {
-              _payments.removeWhere(
-                  (local) => updated.datetime.isAtSameMomentAs(local.datetime));
-              _payments.add(updated);
-            }
-
-            // Optionally delete local-only transactions
-            if (deleteLocal == true) {
-              _payments.removeWhere(
-                  (local) => localOnlyTransactions.contains(local));
-            }
-          });
-
-          // Notify user of success
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Payments imported successfully!')),
+        if (deleteLocal == true) {
+          _payments.removeWhere(
+            (local) => localOnlyTransactions.contains(local),
           );
         }
-      }
+
+        _payments.sort((a, b) => b.datetime.compareTo(a.datetime));
+
+        // Recalculate totals
+        _income = _payments
+            .where((p) => p.type == PaymentType.credit)
+            .fold(0.0, (sum, p) => sum + p.amount);
+
+        _expense = _payments
+            .where((p) => p.type == PaymentType.debit)
+            .fold(0.0, (sum, p) => sum + p.amount);
+
+        _monthlyExpenses = _calculateMonthlyExpenses(_payments);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payments imported successfully!')),
+      );
     } catch (e) {
-      print("Error while importing CSV: $e");
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error importing CSV: $e')),
       );
     }
+  }
+
+  List<double> _calculateMonthlyExpenses(List<Payment> payments) {
+    final List<double> monthly = List.generate(12, (_) => 0.0);
+
+    for (var p in payments) {
+      if (p.type == PaymentType.debit) {
+        monthly[p.datetime.month - 1] += p.amount;
+      }
+    }
+
+    return monthly;
   }
 
   Future<bool?> _confirmDeleteLocalTransactions(
@@ -655,54 +797,101 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  bool validateCSV(List<List<dynamic>> csvData) {
-    if (csvData.isEmpty || csvData[0].length < 2) {
-      return false; // Invalid structure
+  List<List<dynamic>> parseCSVContent(String csvContent) {
+    final rows = const CsvToListConverter(
+      eol: '\n',
+      shouldParseNumbers: false,
+      textDelimiter: '"',
+    ).convert(csvContent);
+
+    final monthMap = {
+      'JAN': 'Jan',
+      'FEB': 'Feb',
+      'MAR': 'Mar',
+      'APR': 'Apr',
+      'MAY': 'May',
+      'JUN': 'Jun',
+      'JUL': 'Jul',
+      'AUG': 'Aug',
+      'SEP': 'Sep',
+      'OCT': 'Oct',
+      'NOV': 'Nov',
+      'DEC': 'Dec',
+    };
+
+    for (int i = 1; i < rows.length; i++) {
+      if (rows[i].isNotEmpty && rows[i][0] != null) {
+        String dateStr = rows[i][0].toString().trim();
+        dateStr = dateStr.replaceAllMapped(RegExp(r'-(\w{3})-'), (match) {
+          final upper = match.group(1)!.toUpperCase();
+          return '-${monthMap[upper] ?? upper}-';
+        });
+        rows[i][0] = dateStr;
+      }
     }
 
-    // Check for both formats
-    bool hasDebitCreditFormat =
-        csvData[0].contains('Debit') && csvData[0].contains('Credit');
+    return rows;
+  }
+
+  bool validateCSV(List<List<dynamic>> csvData) {
+    if (csvData.isEmpty) {
+      return false;
+    }
+
+    final headers = csvData[0]
+        .map((e) => e.toString().replaceAll('"', '').trim().toLowerCase())
+        .toList();
+
+    bool hasFourColumnFormat = headers.length == 4 &&
+        headers[0] == 'date' &&
+        headers[1] == 'title' &&
+        headers[2] == 'debit' &&
+        headers[3] == 'credit';
+
+    if (!hasFourColumnFormat) {
+      return false;
+    }
+
+    final dateFormat = DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US");
 
     for (int i = 1; i < csvData.length; i++) {
       var row = csvData[i];
 
-      // Check for 'Amount' and 'Type' format
-      if (!hasDebitCreditFormat) {
-        // Validate amount
-        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
-          return false; // Invalid amount
-        }
-        // Validate type (credit or debit)
-        if (row[6] == null ||
-            !["credit", "debit"].contains(row[6].toString().toLowerCase())) {
-          return false; // Invalid type
-        }
-      } else {
-        // Validate Debit and Credit
-        if (row[5] == null || double.tryParse(row[5].toString()) == null) {
-          return false; // Invalid Debit amount
-        }
-        if (row[6] == null || double.tryParse(row[6].toString()) == null) {
-          return false; // Invalid Credit amount
-        }
+      if (row.length != 4) {
+        return false;
       }
 
-      // Validate Account Number (if present)
-      if (row[3] == null || row[3].toString().isEmpty) {
-        return false; // Invalid Account Number
+      String dateStr =
+          row[0].toString().replaceAll('"', '').trim().toUpperCase();
+      try {
+        dateFormat.parseLoose(dateStr);
+      } catch (e) {
+        return false;
       }
 
-      // Validate Date
-      if (row[7] == null || DateTime.tryParse(row[7].toString()) == null) {
-        return false; // Invalid Date
+      String title = row[1].toString().replaceAll('"', '').trim();
+      if (title.isEmpty) {
+        return false;
+      }
+
+      String debitStr =
+          row[2].toString().replaceAll('"', '').replaceAll(',', '').trim();
+      String creditStr =
+          row[3].toString().replaceAll('"', '').replaceAll(',', '').trim();
+
+      if (double.tryParse(debitStr) == null) {
+        return false;
+      }
+
+      if (double.tryParse(creditStr) == null) {
+        return false;
       }
     }
 
     return true;
   }
 
-  Future<bool?> _showImportSummaryDialog(
+  Future<bool?> showImportSummaryDialog(
     BuildContext context, {
     required List<Payment> newTransactions,
     required List<Payment> updatedTransactions,
@@ -731,72 +920,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<String?> _showImportFormatDialog(BuildContext context) async {
-    String? importFormat = "Amount, Type"; // Default format
-
-    return await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text("Select Import Format"),
-          content: SingleChildScrollView(
-            child: StatefulBuilder(
-              builder: (BuildContext context, StateSetter setState) {
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioListTile<String>(
-                      title: const Text("Amount, Type"),
-                      value: "Amount, Type",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setState(() {
-                          importFormat = value; // Update the state
-                        });
-                      },
-                    ),
-                    RadioListTile<String>(
-                      title: const Text("Debit, Credit"),
-                      value: "Debit, Credit",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setState(() {
-                          importFormat = value; // Update the state
-                        });
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop(null); // Cancel the dialog
-              },
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (importFormat != null) {
-                  Navigator.of(context).pop(importFormat); // Confirm selection
-                } else {
-                  // Optionally show a message if no format is selected
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                        content: Text('Please select an import format.')),
-                  );
-                }
-              },
-              child: const Text("Confirm"),
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -850,7 +973,7 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // TagsStrip(),
-          _buildTagsStrip(context),
+          buildTagsStrip(context),
           Container(
             margin:
                 const EdgeInsets.only(left: 15, right: 15, bottom: 15, top: 0),
@@ -1109,7 +1232,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Widget _buildTagsStrip(BuildContext context) {
+  Widget buildTagsStrip(BuildContext context) {
     return tags.isEmpty
         ? const SizedBox()
         : Column(

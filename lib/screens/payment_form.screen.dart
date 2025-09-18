@@ -2,7 +2,6 @@ import 'package:events_emitter/listener.dart';
 import 'package:fintracker/dao/account_dao.dart';
 import 'package:fintracker/dao/category_dao.dart';
 import 'package:fintracker/dao/payment_dao.dart';
-import 'package:fintracker/dao/tag_dao.dart';
 import 'package:fintracker/events.dart';
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
@@ -16,7 +15,6 @@ import 'package:fintracker/widgets/dialog/confirm.modal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:showcaseview/showcaseview.dart';
 
 import '../model/tag.model.dart';
 import 'home/widgets/tag_selection_dialog.dart';
@@ -140,8 +138,8 @@ class _PaymentForm extends State<PaymentForm> {
     }
 
     List<int> selectedTags = [];
-    var i=0;
-    for(var tag in tags) {
+    var i = 0;
+    for (var tag in tags) {
       selectedTags.insert(i, tag.id!);
       i++;
     }
@@ -156,8 +154,7 @@ class _PaymentForm extends State<PaymentForm> {
         title: _title,
         description: _description,
         autoCategorizationEnabled: _autoCategorizationEnabled,
-        tags: selectedTags
-    );
+        tags: selectedTags);
     await _paymentDao.upsert(payment);
     if (widget.onClose != null) {
       widget.onClose!(payment);
@@ -166,12 +163,12 @@ class _PaymentForm extends State<PaymentForm> {
     Navigator.of(context).pop();
   }
 
-
   Future<void> loadTags() async {
     try {
       // Fetch tags for the given payment ID
-      if(widget.payment != null) {
-        final fetchedTags = await _paymentDao.fetchTagsForPayment(widget.payment!.id);
+      if (widget.payment != null) {
+        final fetchedTags =
+            await _paymentDao.fetchTagsForPayment(widget.payment!.id);
 
         // Map the result to the Tag model
         setState(() {
@@ -189,6 +186,7 @@ class _PaymentForm extends State<PaymentForm> {
       debugPrint("Error loading tags: $e");
     }
   }
+
   @override
   void initState() {
     super.initState();
@@ -737,58 +735,60 @@ class _PaymentForm extends State<PaymentForm> {
                             ),
                             tags.isEmpty
                                 ? Expanded(
-                              child: GestureDetector(
-                                child: const Text(
-                                  'Tap to add a tag',
-                                  style: TextStyle(color: Colors.grey),
-                                  textAlign: TextAlign.center,
-                                ),
-                                onTap: () async {
-                                  tags = await showDialog(
-                                    barrierDismissible: false,
-                                    context: context,
-                                    builder: (context) =>
-                                        TagsSelectionDialog(
-                                            selectedTags: tags),
-                                  );
+                                    child: GestureDetector(
+                                      child: const Text(
+                                        'Tap to add a tag',
+                                        style: TextStyle(color: Colors.grey),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      onTap: () async {
+                                        tags = await showDialog(
+                                          barrierDismissible: false,
+                                          context: context,
+                                          builder: (context) =>
+                                              TagsSelectionDialog(
+                                                  selectedTags: tags),
+                                        );
 
-                                  setState(() {});
-                                },
-                              ),
-                            )
+                                        setState(() {});
+                                      },
+                                    ),
+                                  )
                                 : Expanded(
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: List.generate(
-                                    tags.length,
-                                        (index) {
-                                      final tag = tags.elementAt(index);
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        children: List.generate(
+                                          tags.length,
+                                          (index) {
+                                            final tag = tags.elementAt(index);
 
-                                      return Padding(
-                                        padding: const EdgeInsets.all(2.0),
-                                        child: FittedBox(
-                                          fit: BoxFit.contain,
-                                          child: FilterChip(
-                                            padding:
-                                            const EdgeInsets.all(4.0),
-                                            label: Text('# ${tag.name}'),
-                                            shape: RoundedRectangleBorder(
-                                                side: const BorderSide(
-                                                    color: Colors.grey),
-                                                borderRadius:
-                                                BorderRadius.circular(15)),
-                                            onSelected: (selected) =>
-                                                setState(
-                                                        () => tags.remove(tag)),
-                                          ),
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.all(2.0),
+                                              child: FittedBox(
+                                                fit: BoxFit.contain,
+                                                child: FilterChip(
+                                                  padding:
+                                                      const EdgeInsets.all(4.0),
+                                                  label: Text('# ${tag.name}'),
+                                                  shape: RoundedRectangleBorder(
+                                                      side: const BorderSide(
+                                                          color: Colors.grey),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              15)),
+                                                  onSelected: (selected) =>
+                                                      setState(() =>
+                                                          tags.remove(tag)),
+                                                ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      );
-                                    },
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ),
-                            ),
                             InkWell(
                               onTap: () async {
                                 tags = await showDialog(
@@ -800,10 +800,12 @@ class _PaymentForm extends State<PaymentForm> {
 
                                 setState(() {});
                               },
-                              child: Icon(Icons.add),
+                              child: const Icon(Icons.add),
                               // ),
                             ),
-                            const SizedBox(width: 10,),
+                            const SizedBox(
+                              width: 10,
+                            ),
                           ],
                         ),
                       ),
@@ -839,7 +841,10 @@ class _PaymentForm extends State<PaymentForm> {
                 labelStyle:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 isFullWidth: true,
-                onPressed: _amount > 0 && _account != null && _category != null && tags.isNotEmpty
+                onPressed: _amount > 0 &&
+                        _account != null &&
+                        _category != null &&
+                        tags.isNotEmpty
                     ? () {
                         handleSaveTransaction(context);
                       }

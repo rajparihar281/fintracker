@@ -29,7 +29,7 @@ class PaymentListItem extends StatelessWidget {
             color: payment.category.color,
           )),
       title: Text(
-        payment.category.name,
+        payment.title,
         style: Theme.of(context)
             .textTheme
             .bodyMedium

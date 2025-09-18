@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// Usage: the user navigates to the Profile screen
 Future<void> theUserNavigatesToTheProfileScreen(WidgetTester tester) async {
   await tester.pumpWidget(
-    MaterialApp(
+    const MaterialApp(
       home: Scaffold(
         body: Center(
           child: Text('Profile Screen'),

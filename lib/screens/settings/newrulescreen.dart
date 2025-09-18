@@ -228,7 +228,7 @@ class _NewRulesScreenState extends State<NewRulesScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddUserSettingsScreen(),
+        builder: (context) => const AddUserSettingsScreen(),
       ),
     );
   }
