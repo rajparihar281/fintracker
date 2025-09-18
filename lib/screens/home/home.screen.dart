@@ -526,7 +526,6 @@ class _HomeScreenState extends State<HomeScreen> {
       String? selectedFormat = await _showImportFormatDialog(context);
       if (selectedFormat == null) return;
 
-      // Pick CSV file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
@@ -537,7 +536,6 @@ class _HomeScreenState extends State<HomeScreen> {
       File file = File(result.files.single.path!);
       final input = await file.readAsString();
 
-      // Parse CSV (your existing parseCSVContent should handle quoted numbers)
       List<List<dynamic>> csvData = parseCSVContent(input);
 
       bool isValid = validateCSV(csvData);
@@ -548,9 +546,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
         return;
       }
-      print("CSV validation passed!");
 
-      // Helper: normalize month tokens like JUL -> Jul
       final monthMap = {
         'JAN': 'Jan',
         'FEB': 'Feb',
@@ -570,13 +566,11 @@ class _HomeScreenState extends State<HomeScreen> {
         if (raw == null) return null;
         String s = raw.replaceAll('"', '').trim();
 
-        // If the month is all caps like 19-JUL-2025 18:58:47, convert JUL -> Jul
         s = s.replaceAllMapped(RegExp(r'-(\w{3})-'), (m) {
           final up = m.group(1)!.toUpperCase();
           return '-${monthMap[up] ?? (up[0] + up.substring(1).toLowerCase())}-';
         });
 
-        // Try several likely formats (most specific first)
         final formats = <DateFormat>[
           DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US"),
           DateFormat("dd-MMM-yyyy HH:mm", "en_US"),
@@ -587,30 +581,23 @@ class _HomeScreenState extends State<HomeScreen> {
         for (var f in formats) {
           try {
             return f.parseStrict(s);
-          } catch (_) {
-            // continue trying
-          }
+          } catch (_) {}
         }
 
-        // final fallback: try DateTime.parse (ISO-ish) — may still fail
         try {
           return DateTime.parse(s);
         } catch (_) {
-          print("Failed to parse date string: '$raw' (normalized='$s')");
           return null;
         }
       }
 
-      // Helper: parse amount string like "1,04,186.00" -> 104186.00
       double parseAmount(String? raw) {
         if (raw == null) return 0.0;
         String s = raw.toString().replaceAll('"', '').trim();
-        // remove all commas (handles both western and indian groupings)
         s = s.replaceAll(',', '');
         return double.tryParse(s) ?? 0.0;
       }
 
-      // Helper: transaction equality (for finding duplicates)
       bool isSameTransaction(Payment local, Payment csvPayment) {
         final amountEqual = (local.amount - csvPayment.amount).abs() < 0.01;
         final sameType = local.type == csvPayment.type;
@@ -622,7 +609,6 @@ class _HomeScreenState extends State<HomeScreen> {
         return amountEqual && sameType && sameTitle && sameDay;
       }
 
-      // Build Payment objects from rows
       List<Payment> parsedPayments = [];
       int nextId = _payments.isEmpty
           ? 1
@@ -631,13 +617,10 @@ class _HomeScreenState extends State<HomeScreen> {
       for (int i = 1; i < csvData.length; i++) {
         final row = csvData[i];
 
-        // safety: skip rows that don't have 4 columns
         if (row.length < 4) {
-          print("Skipping row ${i + 1}: not enough columns -> $row");
           continue;
         }
 
-        // Extract fields according to your CSV: Date, Title, Debit, Credit
         final rawDate = row[0]?.toString() ?? '';
         final title = row[1]?.toString().replaceAll('"', '').trim() ?? '';
         final debit = parseAmount(row[2]?.toString());
@@ -645,11 +628,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final datetime = tryParseDate(rawDate);
         if (datetime == null) {
-          print("Skipping row ${i + 1} due to unparseable date: '$rawDate'");
           continue;
         }
 
-        // Determine type and amount
         PaymentType type;
         double amount;
         if (debit > 0) {
@@ -659,9 +640,6 @@ class _HomeScreenState extends State<HomeScreen> {
           type = PaymentType.credit;
           amount = credit;
         } else {
-          // both zero -> skip (no money)
-          print(
-              "Skipping row ${i + 1} because both debit and credit are zero: $row");
           continue;
         }
 
@@ -700,17 +678,12 @@ class _HomeScreenState extends State<HomeScreen> {
         parsedPayments.add(payment);
       }
 
-      print("Parsed payments count: ${parsedPayments.length}");
-
-      // If there are no local payments, everything parsed is new
       List<Payment> newTransactions = [];
       List<Payment> updatedTransactions = [];
       List<Payment> localOnlyTransactions = List.from(_payments);
 
       if (_payments.isEmpty) {
         newTransactions = List.from(parsedPayments);
-        print(
-            "No local payments found — all parsed payments treated as new (${newTransactions.length})");
       } else {
         for (var csvPayment in parsedPayments) {
           Payment? match;
@@ -728,11 +701,8 @@ class _HomeScreenState extends State<HomeScreen> {
             newTransactions.add(csvPayment);
           }
         }
-        print(
-            "New: ${newTransactions.length}, Updated: ${updatedTransactions.length}, LocalOnly: ${localOnlyTransactions.length}");
       }
 
-      // Show import summary (same dialogs you already use)
       bool? proceed = await showImportSummaryDialog(
         context,
         newTransactions: newTransactions,
@@ -741,7 +711,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (proceed != true) {
-        print("Import cancelled by the user.");
         return;
       }
 
@@ -751,10 +720,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       setState(() {
-        // add new transactions
         _payments.addAll(newTransactions);
 
-        // replace/update matching transactions
         for (var updated in updatedTransactions) {
           final idx = _payments.indexWhere(
             (local) => local.datetime.isAtSameMomentAs(updated.datetime),
@@ -766,14 +733,12 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
 
-        // delete local-only if requested
         if (deleteLocal == true) {
           _payments.removeWhere(
             (local) => localOnlyTransactions.contains(local),
           );
         }
 
-        // ✅ ensure recent transactions appear at top
         _payments.sort((a, b) => b.datetime.compareTo(a.datetime));
 
         // Recalculate totals
@@ -788,14 +753,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _monthlyExpenses = _calculateMonthlyExpenses(_payments);
       });
 
-      print(
-          "Import finished. payments total: ${_payments.length}, income: $_income, expense: $_expense");
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Payments imported successfully!')),
       );
-    } catch (e, st) {
-      print("Error while importing CSV: $e\n$st");
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error importing CSV: $e')),
       );
@@ -836,15 +797,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Parse CSV content (list of rows) and handle quoted numbers with commas
   List<List<dynamic>> parseCSVContent(String csvContent) {
     final rows = const CsvToListConverter(
       eol: '\n',
       shouldParseNumbers: false,
-      textDelimiter: '"', // keeps "1,169.00" as one cell
+      textDelimiter: '"',
     ).convert(csvContent);
 
-    // Month normalization map
     final monthMap = {
       'JAN': 'Jan',
       'FEB': 'Feb',
@@ -860,7 +819,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'DEC': 'Dec',
     };
 
-    // Normalize dates in first column of each row (skip header row)
     for (int i = 1; i < rows.length; i++) {
       if (rows[i].isNotEmpty && rows[i][0] != null) {
         String dateStr = rows[i][0].toString().trim();
@@ -868,22 +826,18 @@ class _HomeScreenState extends State<HomeScreen> {
           final upper = match.group(1)!.toUpperCase();
           return '-${monthMap[upper] ?? upper}-';
         });
-        rows[i][0] = dateStr; // put back the normalized date
+        rows[i][0] = dateStr;
       }
     }
 
-    print("Fixed CSV: parsed into ${rows.length} rows");
     return rows;
   }
 
-  /// Validate CSV data
   bool validateCSV(List<List<dynamic>> csvData) {
     if (csvData.isEmpty) {
-      print("CSV data is empty");
       return false;
     }
 
-    // Step 1: Validate headers
     final headers = csvData[0]
         .map((e) => e.toString().replaceAll('"', '').trim().toLowerCase())
         .toList();
@@ -895,57 +849,45 @@ class _HomeScreenState extends State<HomeScreen> {
         headers[3] == 'credit';
 
     if (!hasFourColumnFormat) {
-      print("CSV header is invalid: $headers");
       return false;
     }
 
-    // ✅ Use parseLoose so uppercase months like JUL work
     final dateFormat = DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US");
 
-    // Step 2: Validate rows
     for (int i = 1; i < csvData.length; i++) {
       var row = csvData[i];
 
       if (row.length != 4) {
-        print("Row ${i + 1} does not have 4 columns: $row");
         return false;
       }
 
-      // Validate date
       String dateStr =
           row[0].toString().replaceAll('"', '').trim().toUpperCase();
       try {
-        dateFormat.parseLoose(dateStr); // ✅ accepts JUL, SEP, etc.
+        dateFormat.parseLoose(dateStr);
       } catch (e) {
-        print("Row ${i + 1} has invalid date: '$dateStr' → $e");
         return false;
       }
 
-      // Validate title
       String title = row[1].toString().replaceAll('"', '').trim();
       if (title.isEmpty) {
-        print("Row ${i + 1} has empty title");
         return false;
       }
 
-      // Validate debit/credit numbers
       String debitStr =
           row[2].toString().replaceAll('"', '').replaceAll(',', '').trim();
       String creditStr =
           row[3].toString().replaceAll('"', '').replaceAll(',', '').trim();
 
       if (double.tryParse(debitStr) == null) {
-        print("Row ${i + 1} has invalid debit: '$debitStr'");
         return false;
       }
 
       if (double.tryParse(creditStr) == null) {
-        print("Row ${i + 1} has invalid credit: '$creditStr'");
         return false;
       }
     }
 
-    print("CSV validation passed!");
     return true;
   }
 
