@@ -750,28 +750,31 @@ class _HomeScreenState extends State<HomeScreen> {
         localOnlyTransactions.length,
       );
 
-      // Apply changes
       setState(() {
         // add new transactions
         _payments.addAll(newTransactions);
 
         // replace/update matching transactions
         for (var updated in updatedTransactions) {
-          final idx = _payments
-              .indexWhere((local) => isSameTransaction(local, updated));
+          final idx = _payments.indexWhere(
+            (local) => local.datetime.isAtSameMomentAs(updated.datetime),
+          );
           if (idx >= 0) {
             _payments[idx] = updated;
           } else {
-            // if no exact match (defensive), add it
             _payments.add(updated);
           }
         }
 
         // delete local-only if requested
         if (deleteLocal == true) {
-          _payments
-              .removeWhere((local) => localOnlyTransactions.contains(local));
+          _payments.removeWhere(
+            (local) => localOnlyTransactions.contains(local),
+          );
         }
+
+        // ✅ ensure recent transactions appear at top
+        _payments.sort((a, b) => b.datetime.compareTo(a.datetime));
 
         // Recalculate totals
         _income = _payments
