@@ -17,7 +17,6 @@ import 'package:fintracker/screens/home/widgets/payment_list_item.dart';
 import 'package:fintracker/screens/payment_form.screen.dart';
 import 'package:fintracker/theme/colors.dart';
 import 'package:fintracker/widgets/currency.dart';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -29,6 +28,8 @@ import 'package:collection/collection.dart';
 
 import '../../dao/tag_dao.dart';
 import '../../model/tag.model.dart';
+import '../../helpers/csv_import_helper.dart';
+import '../home/widgets/csv_header_mapping_dialog.dart';
 
 String greeting() {
   var hour = DateTime.now().hour;
@@ -69,8 +70,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final TagDao tagDao = TagDao();
   bool allSelected = true;
 
-  //double _savings = 0;
-
   DateTime _focusDate = DateTime.now();
 
   DateTimeRange _range = DateTimeRange(
@@ -78,10 +77,9 @@ class _HomeScreenState extends State<HomeScreen> {
       end: DateTime.now());
   Account? _account;
   Category? _category;
-  bool _showingIncomeOnly = false; // New state variable
+  bool _showingIncomeOnly = false;
   bool _showingExpenseOnly = false;
   String exportFormat = "Amount, Type";
-  String importFormat = "Amount, Type";
 
   void openAddPaymentPage(PaymentType type) async {
     Navigator.of(context)
@@ -104,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchTransactions() async {
     List<Payment> trans;
 
-    // Fetch the selected tag IDs
     List<int> selectedTagIds = [];
     for (int i = 0; i < selectedTags.length; i++) {
       if (selectedTags[i]) {
@@ -112,10 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    print("Selected tag IDs: $selectedTagIds");
-
     if (!allSelected && selectedTagIds.isNotEmpty) {
-      // Fetch payments based on selected tags
       trans = await _paymentDao.findByTags(
         range: _range,
         tagIds: selectedTagIds,
@@ -125,11 +119,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ? PaymentType.debit
             : _showingExpenseOnly
                 ? PaymentType.credit
-                : null, // Filter by type (income/expense)
+                : null,
       );
-      print("Fetched Payment: ${trans.length}");
     } else {
-      // Filter based on showing income/expense only and selected account
       if (_selectedCategory == null) {
         trans = await _paymentDao.find(range: _range, category: _category);
       }
@@ -137,36 +129,26 @@ class _HomeScreenState extends State<HomeScreen> {
         trans = await _paymentDao.find(
           range: _range,
           type: PaymentType.debit,
-          account: _selectedAccount ??
-              _account, // Use the selected account (optional)
-          category:
-              _selectedCategory, // Filter by selected category (mandatory)
+          account: _selectedAccount ?? _account,
+          category: _selectedCategory,
         );
       } else if (_showingExpenseOnly) {
         trans = await _paymentDao.find(
           range: _range,
           type: PaymentType.credit,
-          account: _selectedAccount ??
-              _account, // Use the selected account (optional)
-          category:
-              _selectedCategory, // Filter by selected category (mandatory)
+          account: _selectedAccount ?? _account,
+          category: _selectedCategory,
         );
       } else {
-        // If no filtering by income/expense
         if (_selectedCategory != null) {
-          // Filter by category only if a category is selected
           trans = await _paymentDao.find(
             range: _range,
             category: _selectedCategory,
           );
         } else if (_selectedAccount != null) {
-          // If no category selected, filter by account
-          trans = await _paymentDao.find(
-              range: _range,
-              account: _selectedAccount // Use the selected account (optional)
-              );
+          trans =
+              await _paymentDao.find(range: _range, account: _selectedAccount);
         } else {
-          // If no filters applied, fetch all transactions (unchanged)
           trans = await _paymentDao.find(range: _range, category: _category);
         }
       }
@@ -184,7 +166,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // fetch accounts
     List<Account> accounts = await _accountDao.find(withSummery: true);
 
     setState(() {
@@ -199,7 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void onAccountSelected(Account? account) {
     setState(() {
       _selectedAccount = account;
-
       _fetchTransactions();
     });
   }
@@ -275,8 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         groupValue: exportFormat,
                         onChanged: (String? value) {
                           setState(() {
-                            exportFormat =
-                                value ?? "Amount, Type"; // Update export format
+                            exportFormat = value ?? "Amount, Type";
                           });
                         },
                       ),
@@ -288,8 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         groupValue: exportFormat,
                         onChanged: (String? value) {
                           setState(() {
-                            exportFormat = value ??
-                                "Debit, Credit"; // Update export format
+                            exportFormat = value ?? "Debit, Credit";
                           });
                         },
                       ),
@@ -300,19 +278,16 @@ class _HomeScreenState extends State<HomeScreen> {
             },
           ),
           actions: [
-            // Cancel Button
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
+                Navigator.of(context).pop();
               },
               child: const Text("Cancel"),
             ),
-            // Confirm Button
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Close the dialog
-                exportToCSV(
-                    context, exportFormat); // Confirm the selected format
+                Navigator.of(context).pop();
+                exportToCSV(context, exportFormat);
               },
               child: const Text("Confirm"),
             ),
@@ -327,7 +302,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final reversedPayments = List<Payment>.from(_payments.reversed);
       List<List<String>> csvData = [];
 
-      // Add the header row based on the selected export format
       if (exportFormat == "Debit, Credit") {
         csvData.add([
           "ID",
@@ -358,7 +332,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ]);
       }
 
-      // Add each payment's data
       for (var payment in reversedPayments) {
         if (exportFormat == "Debit, Credit") {
           csvData.add([
@@ -395,17 +368,14 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Convert to CSV string
       String csv = const ListToCsvConverter().convert(csvData);
 
-      // Get the directory to save the file
       Directory directory = await getApplicationDocumentsDirectory();
       final path =
           "/storage/emulated/0/Download/${reversedPayments[0].datetime.day}payments.csv";
       final file = File(path);
       await file.writeAsString(csv);
 
-      // Show a dialog with preview of transactions and options for the user
       showDialog(
         context: context,
         builder: (BuildContext context) {
@@ -413,12 +383,9 @@ class _HomeScreenState extends State<HomeScreen> {
             title: const Text("Export Options"),
             content: Column(
               children: [
-                Text(
-                    "New Transactions: ${reversedPayments.length}"), // Replace with actual filtered list count
-                const Text(
-                    "Updated Transactions: 0"), // Replace with actual filtered list count
-                const Text(
-                    "Local-Only Transactions: 0"), // Replace with actual filtered list count
+                Text("New Transactions: ${reversedPayments.length}"),
+                const Text("Updated Transactions: 0"),
+                const Text("Local-Only Transactions: 0"),
                 const SizedBox(height: 20),
                 const Text(
                     "Would you like to download the CSV or share it via WhatsApp?"),
@@ -429,7 +396,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   Navigator.of(context).pop();
 
-                  // Open the file directly for the user to download it
                   final result = await OpenFile.open(file.path);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('CSV saved to: ${file.path}')),
@@ -439,9 +405,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               TextButton(
                 onPressed: () async {
-                  // Open the file using XFile
                   final xfile = XFile(file.path);
-                  // Share the file via WhatsApp
                   final result = await Share.shareXFiles([xfile],
                       text: "Here is the CSV file of Payment");
                   if (result.status == ShareResultStatus.success) {
@@ -450,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   }
                   await file.delete();
-                  Navigator.of(context).pop(); // Close the dialog
+                  Navigator.of(context).pop();
                 },
                 child: const Text("Share to WhatsApp"),
               ),
@@ -463,219 +427,121 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<String?> _showImportFormatDialog(BuildContext context) async {
-    String? importFormat = "Amount, Type"; // Default format
-
-    return await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setDialogState) {
-            return AlertDialog(
-              title: const Text("Select Import Format"),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioListTile<String>(
-                      title: const Text("Amount, Type"),
-                      value: "Amount, Type",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setDialogState(() {
-                          importFormat = value;
-                        });
-                      },
-                    ),
-                    RadioListTile<String>(
-                      title: const Text("Debit, Credit"),
-                      value: "Debit, Credit",
-                      groupValue: importFormat,
-                      onChanged: (String? value) {
-                        setDialogState(() {
-                          importFormat = value;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(null);
-                  },
-                  child: const Text("Cancel"),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(importFormat);
-                  },
-                  child: const Text("Confirm"),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   Future<void> importPaymentsFromCSV(BuildContext context) async {
     try {
-      String? selectedFormat = await _showImportFormatDialog(context);
-      if (selectedFormat == null) return;
-
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
       );
 
-      if (result == null || result.files.single.path == null) return;
-
-      File file = File(result.files.single.path!);
-      final input = await file.readAsString();
-
-      List<List<dynamic>> csvData = parseCSVContent(input);
-
-      bool isValid = validateCSV(csvData);
-      if (!isValid) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Invalid CSV format. Please check the file.')),
-        );
+      if (result == null || result.files.single.path == null) {
         return;
       }
 
-      final monthMap = {
-        'JAN': 'Jan',
-        'FEB': 'Feb',
-        'MAR': 'Mar',
-        'APR': 'Apr',
-        'MAY': 'May',
-        'JUN': 'Jun',
-        'JUL': 'Jul',
-        'AUG': 'Aug',
-        'SEP': 'Sep',
-        'OCT': 'Oct',
-        'NOV': 'Nov',
-        'DEC': 'Dec',
-      };
+      final csvData =
+          await CsvImportHelper.parseCsvFile(result.files.single.path!);
+      final List<String> headers = List<String>.from(csvData['headers']);
+      final List<List<dynamic>> dataRows =
+          List<List<dynamic>>.from(csvData['rows']);
 
-      DateTime? tryParseDate(String raw) {
-        if (raw == null) return null;
-        String s = raw.replaceAll('"', '').trim();
-
-        s = s.replaceAllMapped(RegExp(r'-(\w{3})-'), (m) {
-          final up = m.group(1)!.toUpperCase();
-          return '-${monthMap[up] ?? (up[0] + up.substring(1).toLowerCase())}-';
-        });
-
-        final formats = <DateFormat>[
-          DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US"),
-          DateFormat("dd-MMM-yyyy HH:mm", "en_US"),
-          DateFormat("dd-MM-yyyy HH:mm:ss"),
-          DateFormat("dd-MM-yyyy HH:mm"),
-        ];
-
-        for (var f in formats) {
-          try {
-            return f.parseStrict(s);
-          } catch (_) {}
+      if (headers.isEmpty || dataRows.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CSV file is empty or invalid'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
-
-        try {
-          return DateTime.parse(s);
-        } catch (_) {
-          return null;
-        }
+        return;
       }
 
-      double parseAmount(String? raw) {
-        if (raw == null) return 0.0;
-        String s = raw.toString().replaceAll('"', '').trim();
-        s = s.replaceAll(',', '');
-        return double.tryParse(s) ?? 0.0;
+      Map<String, String>? mapping;
+      if (context.mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => CsvHeaderMappingDialog(
+            csvHeaders: headers,
+            onMappingConfirmed: (confirmedMapping) {
+              mapping = confirmedMapping;
+            },
+          ),
+        );
       }
 
-      bool isSameTransaction(Payment local, Payment csvPayment) {
-        final amountEqual = (local.amount - csvPayment.amount).abs() < 0.01;
-        final sameType = local.type == csvPayment.type;
-        final sameTitle = local.title.trim().toLowerCase() ==
-            csvPayment.title.trim().toLowerCase();
-        final sameDay = local.datetime.year == csvPayment.datetime.year &&
-            local.datetime.month == csvPayment.datetime.month &&
-            local.datetime.day == csvPayment.datetime.day;
-        return amountEqual && sameType && sameTitle && sameDay;
+      if (mapping == null) {
+        return;
       }
 
       List<Payment> parsedPayments = [];
-      int nextId = _payments.isEmpty
-          ? 1
-          : _payments.map((p) => p.id!).reduce((a, b) => a > b ? a : b) + 1;
+      int skippedRows = 0;
 
-      for (int i = 1; i < csvData.length; i++) {
-        final row = csvData[i];
+      Account defaultAccount = _accounts.firstWhere(
+        (acc) => acc.isDefault == true,
+        orElse: () => _accounts.isNotEmpty
+            ? _accounts.first
+            : Account(
+                id: null,
+                name: "Imported Account",
+                holderName: "",
+                accountNumber: "",
+                icon: Icons.account_balance,
+                color: Colors.blue,
+                isDefault: false,
+                income: 0.0,
+                expense: 0.0,
+                balance: 0.0,
+              ),
+      );
 
-        if (row.length < 4) {
+      Category defaultCategory = Category(
+        id: 10,
+        name: "Imported",
+        icon: Icons.category,
+        color: Colors.grey,
+      );
+
+      // REMOVED: nextId generation - let database handle it
+
+      for (var row in dataRows) {
+        final parsedRow = CsvImportHelper.parseRow(row, mapping!, headers);
+
+        if (parsedRow == null) {
+          skippedRows++;
           continue;
         }
 
-        final rawDate = row[0]?.toString() ?? '';
-        final title = row[1]?.toString().replaceAll('"', '').trim() ?? '';
-        final debit = parseAmount(row[2]?.toString());
-        final credit = parseAmount(row[3]?.toString());
-
-        final datetime = tryParseDate(rawDate);
-        if (datetime == null) {
-          continue;
-        }
-
-        PaymentType type;
-        double amount;
-        if (debit > 0) {
-          type = PaymentType.debit;
-          amount = debit;
-        } else if (credit > 0) {
-          type = PaymentType.credit;
-          amount = credit;
-        } else {
-          continue;
-        }
-
+        // FIXED: Create payment with id: null
         final payment = Payment(
-          id: nextId++,
-          account: Account(
-            id: null,
-            name: "",
-            holderName: "",
-            accountNumber: "",
-            icon: Icons.account_balance,
-            color: Colors.blue,
-            isDefault: false,
-            income: 0.0,
-            expense: 0.0,
-            balance: 0.0,
-          ),
-          category: Category(
-            id: null,
-            name: "Imported",
-            icon: Icons.category,
-            color: type == PaymentType.credit ? Colors.green : Colors.red,
-          ),
-          amount: amount,
-          type: type,
-          datetime: datetime,
-          title: title.isNotEmpty
-              ? title
-              : (type == PaymentType.debit
-                  ? "Imported Expense"
-                  : "Imported Income"),
-          description: "",
+          id: null, // Let database auto-generate ID
+          account: defaultAccount,
+          category: defaultCategory,
+          amount: parsedRow['amount'],
+          type: parsedRow['type'] == 'debit'
+              ? PaymentType.debit
+              : PaymentType.credit,
+          datetime: parsedRow['date'],
+          title: parsedRow['title'],
+          description: parsedRow['description'] ?? '',
           autoCategorizationEnabled: false,
+          tags: [],
         );
 
         parsedPayments.add(payment);
+      }
+
+      if (parsedPayments.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'No valid transactions found. Skipped $skippedRows rows.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
       }
 
       List<Payment> newTransactions = [];
@@ -688,13 +554,26 @@ class _HomeScreenState extends State<HomeScreen> {
         for (var csvPayment in parsedPayments) {
           Payment? match;
           for (var local in _payments) {
-            if (isSameTransaction(local, csvPayment)) {
+            if (_isSameTransaction(local, csvPayment)) {
               match = local;
               break;
             }
           }
 
           if (match != null) {
+            // Copy the existing ID to the CSV payment for update
+            csvPayment = Payment(
+              id: match.id, // Use existing ID
+              account: csvPayment.account,
+              category: csvPayment.category,
+              amount: csvPayment.amount,
+              type: csvPayment.type,
+              datetime: csvPayment.datetime,
+              title: csvPayment.title,
+              description: csvPayment.description,
+              autoCategorizationEnabled: csvPayment.autoCategorizationEnabled,
+              tags: csvPayment.tags,
+            );
             updatedTransactions.add(csvPayment);
             localOnlyTransactions.remove(match);
           } else {
@@ -703,64 +582,275 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      bool? proceed = await showImportSummaryDialog(
-        context,
-        newTransactions: newTransactions,
-        updatedTransactions: updatedTransactions,
-        localOnlyTransactions: localOnlyTransactions,
-      );
+      bool? proceed = false;
+      if (context.mounted) {
+        proceed = await _showImportSummaryDialog(
+          context,
+          newTransactions: newTransactions,
+          updatedTransactions: updatedTransactions,
+          localOnlyTransactions: localOnlyTransactions,
+          skippedRows: skippedRows,
+        );
+      }
 
       if (proceed != true) {
         return;
       }
 
-      bool? deleteLocal = await _confirmDeleteLocalTransactions(
-        context,
-        localOnlyTransactions.length,
-      );
+      // Save new transactions (database will assign IDs)
+      for (var payment in newTransactions) {
+        await _paymentDao.create(payment);
+      }
 
-      setState(() {
-        _payments.addAll(newTransactions);
-
-        for (var updated in updatedTransactions) {
-          final idx = _payments.indexWhere(
-            (local) => local.datetime.isAtSameMomentAs(updated.datetime),
-          );
-          if (idx >= 0) {
-            _payments[idx] = updated;
-          } else {
-            _payments.add(updated);
-          }
+      // Update existing transactions (already have IDs)
+      for (var payment in updatedTransactions) {
+        if (payment.id != null) {
+          await _paymentDao.update(payment);
         }
+      }
+
+      if (localOnlyTransactions.isNotEmpty && context.mounted) {
+        bool? deleteLocal = await _confirmDeleteLocalTransactions(
+          context,
+          localOnlyTransactions.length,
+        );
 
         if (deleteLocal == true) {
-          _payments.removeWhere(
-            (local) => localOnlyTransactions.contains(local),
-          );
+          for (var payment in localOnlyTransactions) {
+            if (payment.id != null) {
+              await _paymentDao.deleteTransaction(payment.id!);
+            }
+          }
         }
+      }
 
-        _payments.sort((a, b) => b.datetime.compareTo(a.datetime));
+      await _fetchTransactions();
 
-        // Recalculate totals
-        _income = _payments
-            .where((p) => p.type == PaymentType.credit)
-            .fold(0.0, (sum, p) => sum + p.amount);
-
-        _expense = _payments
-            .where((p) => p.type == PaymentType.debit)
-            .fold(0.0, (sum, p) => sum + p.amount);
-
-        _monthlyExpenses = _calculateMonthlyExpenses(_payments);
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payments imported successfully!')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ Import completed! ${newTransactions.length} new, ${updatedTransactions.length} updated${skippedRows > 0 ? ", $skippedRows skipped" : ""}',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error importing CSV: $e')),
-      );
+      debugPrint('Error importing CSV: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error importing CSV: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     }
+  }
+
+  bool _isSameTransaction(Payment local, Payment csvPayment) {
+    final amountEqual = (local.amount - csvPayment.amount).abs() < 0.01;
+    final sameType = local.type == csvPayment.type;
+    final sameTitle = local.title.trim().toLowerCase() ==
+        csvPayment.title.trim().toLowerCase();
+    final sameDay = local.datetime.year == csvPayment.datetime.year &&
+        local.datetime.month == csvPayment.datetime.month &&
+        local.datetime.day == csvPayment.datetime.day;
+
+    return amountEqual && sameType && sameTitle && sameDay;
+  }
+
+  Future<bool?> _showImportSummaryDialog(
+    BuildContext context, {
+    required List<Payment> newTransactions,
+    required List<Payment> updatedTransactions,
+    required List<Payment> localOnlyTransactions,
+    required int skippedRows,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.summarize, color: Colors.blue),
+            SizedBox(width: 8),
+            Text(
+              "Import Summary",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSummaryRow(
+              icon: Icons.add_circle,
+              color: Colors.green,
+              label: "New Transactions",
+              count: newTransactions.length,
+            ),
+            const SizedBox(height: 12),
+            _buildSummaryRow(
+              icon: Icons.update,
+              color: Colors.blue,
+              label: "Updated Transactions",
+              count: updatedTransactions.length,
+            ),
+            const SizedBox(height: 12),
+            _buildSummaryRow(
+              icon: Icons.phone_android,
+              color: Colors.orange,
+              label: "Local-Only Transactions",
+              count: localOnlyTransactions.length,
+            ),
+            if (skippedRows > 0) ...[
+              const SizedBox(height: 12),
+              _buildSummaryRow(
+                icon: Icons.warning_amber,
+                color: Colors.red,
+                label: "Skipped Rows (Invalid)",
+                count: skippedRows,
+              ),
+            ],
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                "Do you want to proceed with this import?",
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.check, size: 18),
+            label: const Text("Proceed"),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required int count,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            count.toString(),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: color,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<bool?> _confirmDeleteLocalTransactions(
+    BuildContext context,
+    int count,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text("Delete Local Transactions?"),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "There are $count transaction(s) in your local data that are not present in the CSV file.",
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Text(
+                "Would you like to delete these local transactions?",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Keep Them"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
   }
 
   List<double> _calculateMonthlyExpenses(List<Payment> payments) {
@@ -773,154 +863,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return monthly;
-  }
-
-  Future<bool?> _confirmDeleteLocalTransactions(
-      BuildContext context, int count) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Delete Local Transactions"),
-        content: Text(
-            "There are $count transactions in your local data that are not in the CSV file. Do you want to delete them?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("No"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Yes"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<List<dynamic>> parseCSVContent(String csvContent) {
-    final rows = const CsvToListConverter(
-      eol: '\n',
-      shouldParseNumbers: false,
-      textDelimiter: '"',
-    ).convert(csvContent);
-
-    final monthMap = {
-      'JAN': 'Jan',
-      'FEB': 'Feb',
-      'MAR': 'Mar',
-      'APR': 'Apr',
-      'MAY': 'May',
-      'JUN': 'Jun',
-      'JUL': 'Jul',
-      'AUG': 'Aug',
-      'SEP': 'Sep',
-      'OCT': 'Oct',
-      'NOV': 'Nov',
-      'DEC': 'Dec',
-    };
-
-    for (int i = 1; i < rows.length; i++) {
-      if (rows[i].isNotEmpty && rows[i][0] != null) {
-        String dateStr = rows[i][0].toString().trim();
-        dateStr = dateStr.replaceAllMapped(RegExp(r'-(\w{3})-'), (match) {
-          final upper = match.group(1)!.toUpperCase();
-          return '-${monthMap[upper] ?? upper}-';
-        });
-        rows[i][0] = dateStr;
-      }
-    }
-
-    return rows;
-  }
-
-  bool validateCSV(List<List<dynamic>> csvData) {
-    if (csvData.isEmpty) {
-      return false;
-    }
-
-    final headers = csvData[0]
-        .map((e) => e.toString().replaceAll('"', '').trim().toLowerCase())
-        .toList();
-
-    bool hasFourColumnFormat = headers.length == 4 &&
-        headers[0] == 'date' &&
-        headers[1] == 'title' &&
-        headers[2] == 'debit' &&
-        headers[3] == 'credit';
-
-    if (!hasFourColumnFormat) {
-      return false;
-    }
-
-    final dateFormat = DateFormat("dd-MMM-yyyy HH:mm:ss", "en_US");
-
-    for (int i = 1; i < csvData.length; i++) {
-      var row = csvData[i];
-
-      if (row.length != 4) {
-        return false;
-      }
-
-      String dateStr =
-          row[0].toString().replaceAll('"', '').trim().toUpperCase();
-      try {
-        dateFormat.parseLoose(dateStr);
-      } catch (e) {
-        return false;
-      }
-
-      String title = row[1].toString().replaceAll('"', '').trim();
-      if (title.isEmpty) {
-        return false;
-      }
-
-      String debitStr =
-          row[2].toString().replaceAll('"', '').replaceAll(',', '').trim();
-      String creditStr =
-          row[3].toString().replaceAll('"', '').replaceAll(',', '').trim();
-
-      if (double.tryParse(debitStr) == null) {
-        return false;
-      }
-
-      if (double.tryParse(creditStr) == null) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  Future<bool?> showImportSummaryDialog(
-    BuildContext context, {
-    required List<Payment> newTransactions,
-    required List<Payment> updatedTransactions,
-    required List<Payment> localOnlyTransactions,
-  }) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Import Summary"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("New Transactions: ${newTransactions.length}"),
-            Text("Updated Transactions: ${updatedTransactions.length}"),
-            Text("Local-Only Transactions: ${localOnlyTransactions.length}"),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Proceed"),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -948,23 +890,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            // Move the LocaleSelectorPopupMenu inside the Drawer
             ListTile(
-              title: const Text('Import CSV File'),
-              trailing: IconButton(
-                icon: const Icon(Icons.upload_file), // Updated icon for clarity
-                onPressed: () async {
-                  // Call the import function and handle any further actions here
-                  await importPaymentsFromCSV(context);
-                },
+              leading: const Icon(Icons.upload_file, color: Colors.blue),
+              title: const Text(
+                'Import CSV File',
+                style: TextStyle(fontWeight: FontWeight.w500),
               ),
               subtitle: const Text(
-                'Select a CSV file in the supported format (Amount, Type or Debit, Credit).',
+                'Import transactions with flexible column mapping',
                 style: TextStyle(fontSize: 12.0, color: Colors.grey),
               ),
+              onTap: () async {
+                Navigator.pop(context);
+                await importPaymentsFromCSV(context);
+              },
             ),
-
-            // Add other items if needed
           ],
         ),
       ),
@@ -972,7 +912,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // TagsStrip(),
           buildTagsStrip(context),
           Container(
             margin:
@@ -1023,13 +962,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ]),
           ),
-
-          /*
-
-            Horizontal Date picker is added to select a single date
-
-          */
-          //TableEventsExample(),
           EasyInfiniteDateTimeLine(
             firstDate: DateTime(2023),
             focusDate: _focusDate,
@@ -1053,9 +985,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: InkWell(
                   onTap: () {
                     setState(() {
-                      _showingIncomeOnly =
-                          !_showingIncomeOnly; // Toggle showing income
-                      _showingExpenseOnly = false; // Hide expense only
+                      _showingIncomeOnly = !_showingIncomeOnly;
+                      _showingExpenseOnly = false;
                       _fetchTransactions();
                     });
                   },
@@ -1072,7 +1003,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text.rich(TextSpan(children: [
-                              //TextSpan(text: TextStyle(color: ThemeColors.success)),
                               TextSpan(
                                   text: "Income",
                                   style: TextStyle(
@@ -1100,9 +1030,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: InkWell(
                   onTap: () {
                     setState(() {
-                      _showingExpenseOnly =
-                          !_showingExpenseOnly; // Toggle showing expense
-                      _showingIncomeOnly = false; // Hide income only
+                      _showingExpenseOnly = !_showingExpenseOnly;
+                      _showingIncomeOnly = false;
                       _fetchTransactions();
                     });
                   },
@@ -1119,7 +1048,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text.rich(TextSpan(children: [
-                              //TextSpan(text: "▲", style: TextStyle(color: ThemeColors.error)),
                               TextSpan(
                                   text: "Expense",
                                   style: TextStyle(
@@ -1184,9 +1112,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
         ],
       )),
-      /**
-           * Buttons to add income and expense
-           */
       floatingActionButton: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -1281,7 +1206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     : Icons.check_box_outline_blank),
                                 onTap: () {
                                   toggleTagSelection(
-                                      index, !selectedTags[index] ?? false);
+                                      index, !selectedTags[index]);
                                 },
                               ),
                               Text(
