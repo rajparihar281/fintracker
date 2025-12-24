@@ -29,6 +29,7 @@ class _AccountForm extends State<AccountForm> {
           name: widget.account!.name,
           holderName: widget.account!.holderName,
           accountNumber: widget.account!.accountNumber,
+          upiId: widget.account!.upiId,
           icon: widget.account!.icon,
           color: widget.account!.color);
     } else {
@@ -36,6 +37,7 @@ class _AccountForm extends State<AccountForm> {
           name: "",
           holderName: "",
           accountNumber: "",
+          upiId: "",
           icon: Icons.account_circle,
           color: Colors.grey);
     }
@@ -146,6 +148,28 @@ class _AccountForm extends State<AccountForm> {
                   onChanged: (text) {
                     setState(() {
                       _account!.accountNumber = text;
+                    });
+                  },
+                ),
+              ),
+
+              Container(
+                padding: const EdgeInsets.only(
+                  bottom: 20,
+                ),
+                child: TextFormField(
+                  decoration: InputDecoration(
+                      labelText: 'UPI ID',
+                      hintText: 'Enter UPI ID (e.g., user@paytm)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 15)),
+                  initialValue: _account!.upiId ?? '',
+                  onChanged: (text) {
+                    setState(() {
+                      _account!.upiId = text.isEmpty ? null : text;
                     });
                   },
                 ),

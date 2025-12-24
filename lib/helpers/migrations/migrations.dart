@@ -56,3 +56,8 @@ void v1(Database database) async {
       ");");
 
 }
+
+void v2(Database database) async {
+  debugPrint("Running second migration - adding UPI ID to accounts....");
+  await database.execute("ALTER TABLE accounts ADD COLUMN upiId TEXT NULL;");
+}

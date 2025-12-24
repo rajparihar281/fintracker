@@ -12,6 +12,7 @@ import 'package:fintracker/widgets/dialog/account_form.dialog.dart';
 import 'package:fintracker/widgets/dialog/category_form.dialog.dart';
 import 'package:fintracker/widgets/buttons/button.dart';
 import 'package:fintracker/widgets/dialog/confirm.modal.dart';
+import 'package:fintracker/widgets/upi_qr_code.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -828,7 +829,25 @@ class _PaymentForm extends State<PaymentForm> {
                         ),
                         const Text("Use it for Auto Categorization"),
                       ],
-                    )
+                    ),
+                    // UPI QR Code for Income transactions
+                    if (_type == PaymentType.credit && 
+                        _account?.upiId != null && 
+                        _account!.upiId!.isNotEmpty && 
+                        _amount > 0)
+                      Container(
+                        margin: const EdgeInsets.all(15),
+                        child: UpiQrCode(
+                          upiId: _account!.upiId!,
+                          payeeName: _account!.holderName.isNotEmpty 
+                              ? _account!.holderName 
+                              : _account!.name,
+                          amount: _amount,
+                          transactionNote: _title.isNotEmpty 
+                              ? _title 
+                              : 'Payment to ${_account!.name}',
+                        ),
+                      ),
                   ],
                 ),
               ),
