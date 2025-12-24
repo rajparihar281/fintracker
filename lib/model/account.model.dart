@@ -5,6 +5,7 @@ class Account {
   String name;
   String holderName;
   String accountNumber;
+  String? upiId;
   IconData icon;
   Color color;
   bool? isDefault;
@@ -17,6 +18,7 @@ class Account {
       required this.name,
       required this.holderName,
       required this.accountNumber,
+      this.upiId,
       required this.icon,
       required this.color,
       this.isDefault,
@@ -29,6 +31,7 @@ class Account {
         name: data["name"],
         holderName: data["holderName"] ?? "",
         accountNumber: data["accountNumber"] ?? "",
+        upiId: data["upiId"],
         icon: IconData(data["icon"], fontFamily: 'MaterialIcons'),
         color: Color(data["color"]),
         isDefault: data["isDefault"] == 1 ? true : false,
@@ -42,6 +45,7 @@ class Account {
         "name": name,
         "holderName": holderName,
         "accountNumber": accountNumber,
+        "upiId": upiId,
         "icon": icon.codePoint,
         "color": color.value,
         "isDefault": (isDefault ?? false) ? 1 : 0

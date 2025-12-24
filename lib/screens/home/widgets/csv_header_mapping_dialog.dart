@@ -180,7 +180,7 @@ class _CsvHeaderMappingDialogState extends State<CsvHeaderMappingDialog> {
           Expanded(
             flex: 3,
             child: DropdownButtonFormField<String>(
-              value: fieldMapping[field],
+              initialValue: fieldMapping[field],
               dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
               decoration: InputDecoration(
                 contentPadding: const EdgeInsets.symmetric(
