@@ -1,6 +1,7 @@
 import 'package:fintracker/model/account.model.dart';
 import 'package:fintracker/model/category.model.dart';
 import 'package:intl/intl.dart';
+import 'dart:convert';
 
 enum PaymentType { debit, credit }
 
@@ -15,6 +16,7 @@ class Payment {
   String description;
   bool autoCategorizationEnabled;
   List<int> tags;
+  List<String> imagePaths;
 
   Payment({
     this.id,
@@ -27,9 +29,19 @@ class Payment {
     required this.description,
     required this.autoCategorizationEnabled,
     this.tags = const [],
+    this.imagePaths = const [],
   });
 
   factory Payment.fromJson(Map<String, dynamic> data) {
+    List<String> imagePathsList = [];
+    if (data["imagePaths"] != null && data["imagePaths"].isNotEmpty) {
+      try {
+        imagePathsList = List<String>.from(jsonDecode(data["imagePaths"]));
+      } catch (e) {
+        imagePathsList = [];
+      }
+    }
+    
     return Payment(
       id: data["id"],
       title: data["title"] ?? "",
@@ -41,6 +53,7 @@ class Payment {
       datetime: DateTime.parse(data["datetime"]),
       autoCategorizationEnabled: data["autoCategorizationEnabled"],
       tags: List<int>.from(data["tags"] ?? []),
+      imagePaths: imagePathsList,
     );
   }
 
@@ -55,6 +68,7 @@ class Payment {
     "type": type == PaymentType.credit ? "CR" : "DR",
     "autoCategorizationEnabled": autoCategorizationEnabled,
     "tags": tags,
+    "imagePaths": imagePaths.isNotEmpty ? jsonEncode(imagePaths) : null,
   };
 }
 

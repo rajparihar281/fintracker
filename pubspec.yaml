@@ -60,6 +60,7 @@ dependencies:
   showcaseview: ^3.0.0
   collection: ^1.18.0
   qr_flutter: ^4.1.0
+  image_picker: ^1.0.4
 
 
 dev_dependencies:

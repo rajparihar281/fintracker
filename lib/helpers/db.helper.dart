@@ -17,7 +17,7 @@ Future<Database> getDBInstance() async {
       var databaseFactory = databaseFactoryFfi;
       db = await databaseFactory.openDatabase("database.db",
           options: OpenDatabaseOptions(
-              version: 2, onCreate: onCreate, onUpgrade: onUpgrade));
+              version: 3, onCreate: onCreate, onUpgrade: onUpgrade));
     } else {
       String databasesPath = await getDatabasesPath();
       String dbPath = join(databasesPath, 'database.db');
@@ -28,7 +28,7 @@ Future<Database> getDBInstance() async {
         // Create the database file if it doesn't exist
       }
       db = await openDatabase(dbPath,
-          version: 2, onCreate: onCreate, onUpgrade: onUpgrade);
+          version: 3, onCreate: onCreate, onUpgrade: onUpgrade);
     }
 
     database = db;
@@ -40,7 +40,7 @@ Future<Database> getDBInstance() async {
 }
 
 typedef MigrationCallback = Function(Database database);
-List<MigrationCallback> migrations = [v1, v2];
+List<MigrationCallback> migrations = [v1, v2, v3];
 Future<void> onCreate(Database database, int version) async {
   for (MigrationCallback callback in migrations) {
     await callback(database);
