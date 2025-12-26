@@ -61,3 +61,8 @@ void v2(Database database) async {
   debugPrint("Running second migration - adding UPI ID to accounts....");
   await database.execute("ALTER TABLE accounts ADD COLUMN upiId TEXT NULL;");
 }
+
+void v3(Database database) async {
+  debugPrint("Running third migration - adding image paths to payments....");
+  await database.execute("ALTER TABLE payments ADD COLUMN imagePaths TEXT NULL;");
+}

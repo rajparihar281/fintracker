@@ -1,5 +1,6 @@
 import 'package:fintracker/model/payment.model.dart';
 import 'package:fintracker/widgets/currency.dart';
+import 'package:fintracker/widgets/image_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../theme/colors.dart';
@@ -13,6 +14,8 @@ class PaymentListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     bool isCredit = payment.type == PaymentType.credit;
+    bool hasImages = payment.imagePaths.isNotEmpty;
+    
     return ListTile(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
       onTap: onTap,
@@ -28,12 +31,57 @@ class PaymentListItem extends StatelessWidget {
             size: 22,
             color: payment.category.color,
           )),
-      title: Text(
-        payment.title,
-        style: Theme.of(context)
-            .textTheme
-            .bodyMedium
-            ?.merge(const TextStyle(fontWeight: FontWeight.w500)),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              payment.title,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.merge(const TextStyle(fontWeight: FontWeight.w500)),
+            ),
+          ),
+          if (hasImages)
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ImageViewer(
+                      imagePaths: payment.imagePaths,
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.image,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      '${payment.imagePaths.length}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
       subtitle: Text.rich(
         TextSpan(

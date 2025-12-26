@@ -13,9 +13,12 @@ import 'package:fintracker/widgets/dialog/category_form.dialog.dart';
 import 'package:fintracker/widgets/buttons/button.dart';
 import 'package:fintracker/widgets/dialog/confirm.modal.dart';
 import 'package:fintracker/widgets/upi_qr_code.dart';
+import 'package:fintracker/widgets/image_viewer.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 import '../model/tag.model.dart';
 import 'home/widgets/tag_selection_dialog.dart';
@@ -58,6 +61,7 @@ class _PaymentForm extends State<PaymentForm> {
   PaymentType _type = PaymentType.credit;
   DateTime _datetime = DateTime.now();
   bool _autoCategorizationEnabled = false;
+  List<String> _imagePaths = [];
 
   loadAccounts() {
     _accountDao.find().then((value) {
@@ -90,6 +94,7 @@ class _PaymentForm extends State<PaymentForm> {
         _datetime = widget.payment!.datetime;
         _initialised = true;
         _autoCategorizationEnabled = widget.payment!.autoCategorizationEnabled;
+        _imagePaths = List<String>.from(widget.payment!.imagePaths);
       });
     } else {
       setState(() {
@@ -155,7 +160,8 @@ class _PaymentForm extends State<PaymentForm> {
         title: _title,
         description: _description,
         autoCategorizationEnabled: _autoCategorizationEnabled,
-        tags: selectedTags);
+        tags: selectedTags,
+        imagePaths: _imagePaths);
     await _paymentDao.upsert(payment);
     if (widget.onClose != null) {
       widget.onClose!(payment);
@@ -214,6 +220,23 @@ class _PaymentForm extends State<PaymentForm> {
   }
 
   bool autoCategorize = false;
+
+  Future<void> _pickImages() async {
+    final ImagePicker picker = ImagePicker();
+    final List<XFile> images = await picker.pickMultiImage();
+    
+    if (images.isNotEmpty) {
+      setState(() {
+        _imagePaths.addAll(images.map((image) => image.path));
+      });
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _imagePaths.removeAt(index);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -830,6 +853,102 @@ class _PaymentForm extends State<PaymentForm> {
                         const Text("Use it for Auto Categorization"),
                       ],
                     ),
+                    // Image attachment section
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                "Attachments",
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600, fontSize: 16),
+                              ),
+                              TextButton.icon(
+                                onPressed: _pickImages,
+                                icon: const Icon(Icons.add_photo_alternate),
+                                label: const Text("Add Images"),
+                              ),
+                            ],
+                          ),
+                          if (_imagePaths.isNotEmpty)
+                            Container(
+                              height: 100,
+                              margin: const EdgeInsets.only(top: 10),
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _imagePaths.length,
+                                itemBuilder: (context, index) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(right: 10),
+                                    child: Stack(
+                                      children: [
+                                        GestureDetector(
+                                          onTap: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => ImageViewer(
+                                                  imagePaths: _imagePaths,
+                                                  initialIndex: index,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                          child: Container(
+                                            width: 80,
+                                            height: 80,
+                                            decoration: BoxDecoration(
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: Colors.grey.shade300,
+                                              ),
+                                            ),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.file(
+                                                File(_imagePaths[index]),
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) {
+                                                  return const Icon(
+                                                    Icons.error,
+                                                    color: Colors.red,
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        Positioned(
+                                          top: -5,
+                                          right: -5,
+                                          child: IconButton(
+                                            onPressed: () => _removeImage(index),
+                                            icon: Container(
+                                              decoration: const BoxDecoration(
+                                                color: Colors.red,
+                                                shape: BoxShape.circle,
+                                              ),
+                                              child: const Icon(
+                                                Icons.close,
+                                                color: Colors.white,
+                                                size: 16,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     // UPI QR Code for Income transactions
                     if (_type == PaymentType.credit && 
                         _account?.upiId != null && 
@@ -862,8 +981,7 @@ class _PaymentForm extends State<PaymentForm> {
                 isFullWidth: true,
                 onPressed: _amount > 0 &&
                         _account != null &&
-                        _category != null &&
-                        tags.isNotEmpty
+                        _category != null
                     ? () {
                         handleSaveTransaction(context);
                       }
