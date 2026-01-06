@@ -65,6 +65,12 @@ class _PaymentForm extends State<PaymentForm> {
   bool _autoCategorizationEnabled = false;
   List<String> _imagePaths = [];
 
+  // UPI QR related fields
+  String? _upiTxnId;
+  Map<String, String>? _lastUpiData;
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+
   loadAccounts() {
     _accountDao.find().then((value) {
       setState(() {
@@ -84,26 +90,28 @@ class _PaymentForm extends State<PaymentForm> {
   void populateState() async {
     await loadAccounts();
     await loadCategories();
+
     if (widget.payment != null) {
-      setState(() {
-        _id = widget.payment!.id;
-        _title = widget.payment!.title;
-        _description = widget.payment!.description;
-        _account = widget.payment!.account;
-        _category = widget.payment!.category;
-        _amount = widget.payment!.amount;
-        _type = widget.payment!.type;
-        _datetime = widget.payment!.datetime;
-        _initialised = true;
-        _autoCategorizationEnabled = widget.payment!.autoCategorizationEnabled;
-        _imagePaths = List<String>.from(widget.payment!.imagePaths);
-      });
+      _id = widget.payment!.id;
+      _title = widget.payment!.title;
+      _description = widget.payment!.description;
+      _account = widget.payment!.account;
+      _category = widget.payment!.category;
+      _amount = widget.payment!.amount;
+      _type = widget.payment!.type;
+      _datetime = widget.payment!.datetime;
+      _autoCategorizationEnabled = widget.payment!.autoCategorizationEnabled;
+      _imagePaths = List<String>.from(widget.payment!.imagePaths);
     } else {
-      setState(() {
-        _type = widget.type;
-        _initialised = true;
-      });
+      _type = widget.type;
     }
+
+    _titleController = TextEditingController(text: _title);
+    _descriptionController = TextEditingController(text: _description);
+
+    setState(() {
+      _initialised = true;
+    });
   }
 
   Future<void> chooseDate(BuildContext context) async {
@@ -218,6 +226,9 @@ class _PaymentForm extends State<PaymentForm> {
     _accountEventListener?.cancel();
     _categoryEventListener?.cancel();
 
+    _titleController.dispose();
+    _descriptionController.dispose();
+
     super.dispose();
   }
 
@@ -234,6 +245,12 @@ class _PaymentForm extends State<PaymentForm> {
     }
   }
 
+  void _removeImage(int index) {
+    setState(() {
+      _imagePaths.removeAt(index);
+    });
+  }
+
   // Scan UPI QR Code
   Future<void> _scanUpiQr() async {
     final rawQr = await Navigator.push(
@@ -245,17 +262,29 @@ class _PaymentForm extends State<PaymentForm> {
 
     if (rawQr == null) return;
 
-    final parsedData = UpiQrParser.parse(rawQr);
+    final parsed = UpiQrParser.parse(rawQr);
+    if (parsed.isEmpty) return;
 
-    debugPrint("UPI QR RAW: $rawQr");
-    debugPrint("UPI PARSED DATA: $parsedData");
-
-    // DO NOT update form fields yet (Step 2)
-  }
-
-  void _removeImage(int index) {
     setState(() {
-      _imagePaths.removeAt(index);
+      // Title ← Payee Name
+      if (parsed['pn'] != null && parsed['pn']!.isNotEmpty) {
+        _title = parsed['pn']!;
+        _titleController.text = _title; // ✅ SYNC HERE
+      }
+
+      // Description ← UPI ID
+      if (parsed['pa'] != null && parsed['pa']!.isNotEmpty) {
+        _description = parsed['pa']!;
+        _descriptionController.text = _description; // ✅ SYNC HERE
+      }
+
+      // Amount (only if empty)
+      if ((_amount == 0 || _amount.isNaN) && parsed['am'] != null) {
+        _amount = double.tryParse(parsed['am']!) ?? _amount;
+      }
+
+      // Transaction reference
+      _upiTxnId = parsed['tr'] ?? parsed['aid'];
     });
   }
 
@@ -345,6 +374,7 @@ class _PaymentForm extends State<PaymentForm> {
                       margin: const EdgeInsets.only(
                           left: 15, right: 15, bottom: 25),
                       child: TextFormField(
+                        controller: _titleController,
                         decoration: InputDecoration(
                           filled: true,
                           hintText: "Title",
@@ -358,11 +388,8 @@ class _PaymentForm extends State<PaymentForm> {
                           contentPadding: const EdgeInsets.symmetric(
                               vertical: 14, horizontal: 15),
                         ),
-                        initialValue: _title,
                         onChanged: (text) {
-                          setState(() {
-                            _title = text;
-                          });
+                          _title = text;
                         },
                       ),
                     ),
@@ -370,22 +397,39 @@ class _PaymentForm extends State<PaymentForm> {
                       margin: const EdgeInsets.only(
                           left: 15, right: 15, bottom: 25),
                       child: TextFormField(
+                        controller: _descriptionController,
                         maxLines: null,
                         decoration: InputDecoration(
-                            filled: true,
-                            hintText: "Description",
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15)),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 15)),
-                        initialValue: _description,
+                          filled: true,
+                          hintText: "Description",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 15),
+                        ),
                         onChanged: (text) {
-                          setState(() {
-                            _description = text;
-                          });
+                          _description = text;
                         },
                       ),
                     ),
+                    if (_upiTxnId != null)
+                      Container(
+                        margin: const EdgeInsets.only(
+                            left: 15, right: 15, bottom: 25),
+                        child: TextFormField(
+                          initialValue: _upiTxnId,
+                          enabled: false,
+                          decoration: InputDecoration(
+                            filled: true,
+                            labelText: "UPI Transaction ID",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                        ),
+                      ),
+
                     Container(
                         margin: const EdgeInsets.only(
                             left: 15, right: 15, bottom: 25),
