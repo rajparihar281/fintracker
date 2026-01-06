@@ -22,6 +22,8 @@ import 'dart:io';
 
 import '../model/tag.model.dart';
 import 'home/widgets/tag_selection_dialog.dart';
+import 'package:fintracker/payments/helpers/upi_qr_parser.dart';
+import 'package:fintracker/screens/payment_qr_scan.screen.dart';
 
 typedef OnCloseCallback = Function(Payment payment);
 final DateFormat formatter = DateFormat('dd/MM/yyyy hh:mm a');
@@ -224,12 +226,31 @@ class _PaymentForm extends State<PaymentForm> {
   Future<void> _pickImages() async {
     final ImagePicker picker = ImagePicker();
     final List<XFile> images = await picker.pickMultiImage();
-    
+
     if (images.isNotEmpty) {
       setState(() {
         _imagePaths.addAll(images.map((image) => image.path));
       });
     }
+  }
+
+  // Scan UPI QR Code
+  Future<void> _scanUpiQr() async {
+    final rawQr = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PaymentQrScanScreen(),
+      ),
+    );
+
+    if (rawQr == null) return;
+
+    final parsedData = UpiQrParser.parse(rawQr);
+
+    debugPrint("UPI QR RAW: $rawQr");
+    debugPrint("UPI PARSED DATA: $parsedData");
+
+    // DO NOT update form fields yet (Step 2)
   }
 
   void _removeImage(int index) {
@@ -325,13 +346,18 @@ class _PaymentForm extends State<PaymentForm> {
                           left: 15, right: 15, bottom: 25),
                       child: TextFormField(
                         decoration: InputDecoration(
-                            filled: true,
-                            hintText: "Title",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 15)),
+                          filled: true,
+                          hintText: "Title",
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.qr_code_scanner),
+                            onPressed: _scanUpiQr,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 15),
+                        ),
                         initialValue: _title,
                         onChanged: (text) {
                           setState(() {
@@ -855,7 +881,8 @@ class _PaymentForm extends State<PaymentForm> {
                     ),
                     // Image attachment section
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 15, vertical: 10),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -891,7 +918,8 @@ class _PaymentForm extends State<PaymentForm> {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (context) => ImageViewer(
+                                                builder: (context) =>
+                                                    ImageViewer(
                                                   imagePaths: _imagePaths,
                                                   initialIndex: index,
                                                 ),
@@ -902,17 +930,20 @@ class _PaymentForm extends State<PaymentForm> {
                                             width: 80,
                                             height: 80,
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               border: Border.all(
                                                 color: Colors.grey.shade300,
                                               ),
                                             ),
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               child: Image.file(
                                                 File(_imagePaths[index]),
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) {
+                                                errorBuilder: (context, error,
+                                                    stackTrace) {
                                                   return const Icon(
                                                     Icons.error,
                                                     color: Colors.red,
@@ -926,7 +957,8 @@ class _PaymentForm extends State<PaymentForm> {
                                           top: -5,
                                           right: -5,
                                           child: IconButton(
-                                            onPressed: () => _removeImage(index),
+                                            onPressed: () =>
+                                                _removeImage(index),
                                             icon: Container(
                                               decoration: const BoxDecoration(
                                                 color: Colors.red,
@@ -950,20 +982,20 @@ class _PaymentForm extends State<PaymentForm> {
                       ),
                     ),
                     // UPI QR Code for Income transactions
-                    if (_type == PaymentType.credit && 
-                        _account?.upiId != null && 
-                        _account!.upiId!.isNotEmpty && 
+                    if (_type == PaymentType.credit &&
+                        _account?.upiId != null &&
+                        _account!.upiId!.isNotEmpty &&
                         _amount > 0)
                       Container(
                         margin: const EdgeInsets.all(15),
                         child: UpiQrCode(
                           upiId: _account!.upiId!,
-                          payeeName: _account!.holderName.isNotEmpty 
-                              ? _account!.holderName 
+                          payeeName: _account!.holderName.isNotEmpty
+                              ? _account!.holderName
                               : _account!.name,
                           amount: _amount,
-                          transactionNote: _title.isNotEmpty 
-                              ? _title 
+                          transactionNote: _title.isNotEmpty
+                              ? _title
                               : 'Payment to ${_account!.name}',
                         ),
                       ),
@@ -979,9 +1011,7 @@ class _PaymentForm extends State<PaymentForm> {
                 labelStyle:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 isFullWidth: true,
-                onPressed: _amount > 0 &&
-                        _account != null &&
-                        _category != null
+                onPressed: _amount > 0 && _account != null && _category != null
                     ? () {
                         handleSaveTransaction(context);
                       }
