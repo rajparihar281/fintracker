@@ -66,3 +66,11 @@ void v3(Database database) async {
   debugPrint("Running third migration - adding image paths to payments....");
   await database.execute("ALTER TABLE payments ADD COLUMN imagePaths TEXT NULL;");
 }
+
+void v4(Database database) async {
+  debugPrint(
+      "Running fourth migration - adding UPI transaction reference to payments....");
+  await database.execute(
+      "ALTER TABLE payments ADD COLUMN upi_transaction_id TEXT NULL;");
+}
+
