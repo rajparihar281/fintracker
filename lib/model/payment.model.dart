@@ -17,6 +17,7 @@ class Payment {
   bool autoCategorizationEnabled;
   List<int> tags;
   List<String> imagePaths;
+  String? upiTransactionId;
 
   Payment({
     this.id,
@@ -30,6 +31,7 @@ class Payment {
     required this.autoCategorizationEnabled,
     this.tags = const [],
     this.imagePaths = const [],
+    this.upiTransactionId,
   });
 
   factory Payment.fromJson(Map<String, dynamic> data) {
@@ -54,6 +56,7 @@ class Payment {
       autoCategorizationEnabled: data["autoCategorizationEnabled"],
       tags: List<int>.from(data["tags"] ?? []),
       imagePaths: imagePathsList,
+      upiTransactionId: data["upi_transaction_id"],
     );
   }
 
@@ -69,6 +72,7 @@ class Payment {
     "autoCategorizationEnabled": autoCategorizationEnabled,
     "tags": tags,
     "imagePaths": imagePaths.isNotEmpty ? jsonEncode(imagePaths) : null,
+    "upi_transaction_id": upiTransactionId,
   };
 }
 
