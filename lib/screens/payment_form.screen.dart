@@ -171,7 +171,8 @@ class _PaymentForm extends State<PaymentForm> {
         description: _description,
         autoCategorizationEnabled: _autoCategorizationEnabled,
         tags: selectedTags,
-        imagePaths: _imagePaths);
+        imagePaths: _imagePaths,
+        upiTransactionId: _upiTxnId,);
     await _paymentDao.upsert(payment);
     if (widget.onClose != null) {
       widget.onClose!(payment);
@@ -269,13 +270,13 @@ class _PaymentForm extends State<PaymentForm> {
       // Title ← Payee Name
       if (parsed['pn'] != null && parsed['pn']!.isNotEmpty) {
         _title = parsed['pn']!;
-        _titleController.text = _title; // ✅ SYNC HERE
+        _titleController.text = _title;
       }
 
       // Description ← UPI ID
       if (parsed['pa'] != null && parsed['pa']!.isNotEmpty) {
         _description = parsed['pa']!;
-        _descriptionController.text = _description; // ✅ SYNC HERE
+        _descriptionController.text = _description;
       }
 
       // Amount (only if empty)
