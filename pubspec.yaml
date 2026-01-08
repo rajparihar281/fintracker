@@ -63,6 +63,7 @@ dependencies:
   qr_flutter: ^4.1.0
   image_picker: ^1.0.4
   mobile_scanner: ^7.1.4
+  upi_pay: ^1.1.0
 
 
 dev_dependencies:

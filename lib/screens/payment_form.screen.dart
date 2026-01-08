@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:upi_pay/upi_pay.dart';
 import 'dart:io';
 
 import '../model/tag.model.dart';
@@ -64,6 +65,8 @@ class _PaymentForm extends State<PaymentForm> {
   DateTime _datetime = DateTime.now();
   bool _autoCategorizationEnabled = false;
   List<String> _imagePaths = [];
+  List<ApplicationMeta> installedUpiApps = [];
+
 
   // UPI QR related fields
   String? _upiTxnId;
@@ -161,23 +164,32 @@ class _PaymentForm extends State<PaymentForm> {
     }
 
     Payment payment = Payment(
-        id: _id,
-        account: _account!,
-        category: _category!,
-        amount: _amount,
-        type: _type,
-        datetime: _datetime,
-        title: _title,
-        description: _description,
-        autoCategorizationEnabled: _autoCategorizationEnabled,
-        tags: selectedTags,
-        imagePaths: _imagePaths,
-        upiTransactionId: _upiTxnId,);
+      id: _id,
+      account: _account!,
+      category: _category!,
+      amount: _amount,
+      type: _type,
+      datetime: _datetime,
+      title: _title,
+      description: _description,
+      autoCategorizationEnabled: _autoCategorizationEnabled,
+      tags: selectedTags,
+      imagePaths: _imagePaths,
+      upiTransactionId: _upiTxnId,
+    );
     await _paymentDao.upsert(payment);
+
+    globalEvent.emit("payment_update");
+
+    final selectedApp = await _showUpiAppChooser();
+    if (selectedApp != null) {
+      await _launchUpiApp(selectedApp);
+    }
+
     if (widget.onClose != null) {
       widget.onClose!(payment);
     }
-    globalEvent.emit("payment_update");
+
     Navigator.of(context).pop();
   }
 
@@ -210,6 +222,7 @@ class _PaymentForm extends State<PaymentForm> {
     super.initState();
     populateState();
     loadTags();
+    _checkInstalledUpiApps();
 
     _accountEventListener = globalEvent.on("account_update", (data) {
       debugPrint("accounts are changed");
@@ -287,6 +300,65 @@ class _PaymentForm extends State<PaymentForm> {
       // Transaction reference
       _upiTxnId = parsed['tr'] ?? parsed['aid'];
     });
+  }
+
+  //Check installed UPI apps
+  Future<void> _checkInstalledUpiApps() async {
+    final upiPay = UpiPay();
+
+    final apps = await upiPay.getInstalledUpiApplications();
+
+    setState(() {
+      installedUpiApps = apps;
+    });
+  }
+
+  // Show UPI App Chooser
+  Future<ApplicationMeta?> _showUpiAppChooser() {
+    if (installedUpiApps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No UPI apps found on this device'),
+        ),
+      );
+      return Future.value(null);
+    }
+
+    return showModalBottomSheet<ApplicationMeta>(
+      context: context,
+      builder: (_) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: installedUpiApps.map((app) {
+              final appName =
+                  app.upiApplication.toString().split('.').last;
+
+              return ListTile(
+                title: Text(appName),
+                onTap: () => Navigator.pop(context, app),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+
+  // Launch UPI App for Payment
+  Future<void> _launchUpiApp(ApplicationMeta appMeta) async {
+    final upiPay = UpiPay();
+
+    await upiPay.initiateTransaction(
+      app: appMeta.upiApplication,
+      receiverUpiAddress: _description, // pa
+      receiverName: _title,
+      transactionRef:
+      _upiTxnId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      amount: _amount.toString(),
+      transactionNote: _title,
+    );
   }
 
   @override
