@@ -22,8 +22,10 @@ import 'package:upi_pay/upi_pay.dart';
 import 'dart:io';
 
 import '../model/tag.model.dart';
+import 'package:open_file/open_file.dart';
 import 'home/widgets/tag_selection_dialog.dart';
 import 'package:fintracker/payments/helpers/upi_qr_parser.dart';
+import 'package:fintracker/payments/helpers/upi_qr_downloader.dart';
 import 'package:fintracker/screens/payment_qr_scan.screen.dart';
 
 typedef OnCloseCallback = Function(Payment payment);
@@ -67,9 +69,9 @@ class _PaymentForm extends State<PaymentForm> {
   List<String> _imagePaths = [];
   List<ApplicationMeta> installedUpiApps = [];
 
-
   // UPI QR related fields
   String? _upiTxnId;
+  final GlobalKey _upiQrKey = GlobalKey();
   Map<String, String>? _lastUpiData;
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
@@ -182,15 +184,21 @@ class _PaymentForm extends State<PaymentForm> {
     globalEvent.emit("payment_update");
 
     final selectedApp = await _showUpiAppChooser();
+
     if (selectedApp != null) {
       await _launchUpiApp(selectedApp);
+    } else {
+      if (_type == PaymentType.credit) {
+        if (_type == PaymentType.credit && _account?.upiId != null) {
+          await _showQrFallbackDialog();
+        }
+      }
+      Navigator.of(context).pop();
     }
 
     if (widget.onClose != null) {
       widget.onClose!(payment);
     }
-
-    Navigator.of(context).pop();
   }
 
   Future<void> loadTags() async {
@@ -314,14 +322,16 @@ class _PaymentForm extends State<PaymentForm> {
   }
 
   // Show UPI App Chooser
-  Future<ApplicationMeta?> _showUpiAppChooser() {
+  Future<ApplicationMeta?> _showUpiAppChooser() async {
+    if (installedUpiApps.isEmpty) {
+      await _checkInstalledUpiApps();
+    }
+
     if (installedUpiApps.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No UPI apps found on this device'),
-        ),
+        const SnackBar(content: Text('No UPI apps found on this device')),
       );
-      return Future.value(null);
+      return null;
     }
 
     return showModalBottomSheet<ApplicationMeta>(
@@ -331,9 +341,7 @@ class _PaymentForm extends State<PaymentForm> {
           child: ListView(
             shrinkWrap: true,
             children: installedUpiApps.map((app) {
-              final appName =
-                  app.upiApplication.toString().split('.').last;
-
+              final appName = app.upiApplication.toString().split('.').last;
               return ListTile(
                 title: Text(appName),
                 onTap: () => Navigator.pop(context, app),
@@ -345,7 +353,6 @@ class _PaymentForm extends State<PaymentForm> {
     );
   }
 
-
   // Launch UPI App for Payment
   Future<void> _launchUpiApp(ApplicationMeta appMeta) async {
     final upiPay = UpiPay();
@@ -355,9 +362,53 @@ class _PaymentForm extends State<PaymentForm> {
       receiverUpiAddress: _description, // pa
       receiverName: _title,
       transactionRef:
-      _upiTxnId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+          _upiTxnId ?? DateTime.now().millisecondsSinceEpoch.toString(),
       amount: _amount.toString(),
       transactionNote: _title,
+    );
+  }
+
+  // Show QR Fallback Dialog
+  Future<void> _showQrFallbackDialog() async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text("No UPI apps found"),
+          content: const Text(
+            "Some UPI apps block direct redirection for security reasons.\n\n"
+            "You can download the QR code and pay using any UPI app.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+              },
+              child: const Text("Cancel", style: TextStyle(color: Colors.white),),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final path = await UpiQrDownloader.saveQrToDownloads(_upiQrKey);
+
+                if (path != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("QR saved successfully")),
+                  );
+                  await OpenFile.open(path);
+
+                  Navigator.of(ctx).pop(); // close dialog
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Failed to save QR")),
+                  );
+                }
+              },
+              child: const Text("Download QR", style: TextStyle(color: Colors.white),),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -451,10 +502,12 @@ class _PaymentForm extends State<PaymentForm> {
                         decoration: InputDecoration(
                           filled: true,
                           hintText: "Title",
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.qr_code_scanner),
-                            onPressed: _scanUpiQr,
-                          ),
+                          suffixIcon: _type == PaymentType.debit
+                              ? IconButton(
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                  onPressed: _scanUpiQr,
+                                )
+                              : null,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(15),
                           ),
@@ -1105,15 +1158,18 @@ class _PaymentForm extends State<PaymentForm> {
                         _amount > 0)
                       Container(
                         margin: const EdgeInsets.all(15),
-                        child: UpiQrCode(
-                          upiId: _account!.upiId!,
-                          payeeName: _account!.holderName.isNotEmpty
-                              ? _account!.holderName
-                              : _account!.name,
-                          amount: _amount,
-                          transactionNote: _title.isNotEmpty
-                              ? _title
-                              : 'Payment to ${_account!.name}',
+                        child: RepaintBoundary(
+                          key: _upiQrKey,
+                          child: UpiQrCode(
+                            upiId: _account!.upiId!,
+                            payeeName: _account!.holderName.isNotEmpty
+                                ? _account!.holderName
+                                : _account!.name,
+                            amount: _amount,
+                            transactionNote: _title.isNotEmpty
+                                ? _title
+                                : 'Payment to ${_account!.name}',
+                          ),
                         ),
                       ),
                   ],
