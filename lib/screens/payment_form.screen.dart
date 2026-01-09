@@ -18,10 +18,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:upi_pay/upi_pay.dart';
 import 'dart:io';
 
 import '../model/tag.model.dart';
+import 'package:open_file/open_file.dart';
 import 'home/widgets/tag_selection_dialog.dart';
+import 'package:fintracker/payments/helpers/upi_qr_parser.dart';
+import 'package:fintracker/payments/helpers/upi_qr_downloader.dart';
+import 'package:fintracker/screens/payment_qr_scan.screen.dart';
 
 typedef OnCloseCallback = Function(Payment payment);
 final DateFormat formatter = DateFormat('dd/MM/yyyy hh:mm a');
@@ -62,6 +67,14 @@ class _PaymentForm extends State<PaymentForm> {
   DateTime _datetime = DateTime.now();
   bool _autoCategorizationEnabled = false;
   List<String> _imagePaths = [];
+  List<ApplicationMeta> installedUpiApps = [];
+
+  // UPI QR related fields
+  String? _upiTxnId;
+  final GlobalKey _upiQrKey = GlobalKey();
+  Map<String, String>? _lastUpiData;
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
 
   loadAccounts() {
     _accountDao.find().then((value) {
@@ -82,26 +95,28 @@ class _PaymentForm extends State<PaymentForm> {
   void populateState() async {
     await loadAccounts();
     await loadCategories();
+
     if (widget.payment != null) {
-      setState(() {
-        _id = widget.payment!.id;
-        _title = widget.payment!.title;
-        _description = widget.payment!.description;
-        _account = widget.payment!.account;
-        _category = widget.payment!.category;
-        _amount = widget.payment!.amount;
-        _type = widget.payment!.type;
-        _datetime = widget.payment!.datetime;
-        _initialised = true;
-        _autoCategorizationEnabled = widget.payment!.autoCategorizationEnabled;
-        _imagePaths = List<String>.from(widget.payment!.imagePaths);
-      });
+      _id = widget.payment!.id;
+      _title = widget.payment!.title;
+      _description = widget.payment!.description;
+      _account = widget.payment!.account;
+      _category = widget.payment!.category;
+      _amount = widget.payment!.amount;
+      _type = widget.payment!.type;
+      _datetime = widget.payment!.datetime;
+      _autoCategorizationEnabled = widget.payment!.autoCategorizationEnabled;
+      _imagePaths = List<String>.from(widget.payment!.imagePaths);
     } else {
-      setState(() {
-        _type = widget.type;
-        _initialised = true;
-      });
+      _type = widget.type;
     }
+
+    _titleController = TextEditingController(text: _title);
+    _descriptionController = TextEditingController(text: _description);
+
+    setState(() {
+      _initialised = true;
+    });
   }
 
   Future<void> chooseDate(BuildContext context) async {
@@ -151,23 +166,39 @@ class _PaymentForm extends State<PaymentForm> {
     }
 
     Payment payment = Payment(
-        id: _id,
-        account: _account!,
-        category: _category!,
-        amount: _amount,
-        type: _type,
-        datetime: _datetime,
-        title: _title,
-        description: _description,
-        autoCategorizationEnabled: _autoCategorizationEnabled,
-        tags: selectedTags,
-        imagePaths: _imagePaths);
+      id: _id,
+      account: _account!,
+      category: _category!,
+      amount: _amount,
+      type: _type,
+      datetime: _datetime,
+      title: _title,
+      description: _description,
+      autoCategorizationEnabled: _autoCategorizationEnabled,
+      tags: selectedTags,
+      imagePaths: _imagePaths,
+      upiTransactionId: _upiTxnId,
+    );
     await _paymentDao.upsert(payment);
+
+    globalEvent.emit("payment_update");
+
+    final selectedApp = await _showUpiAppChooser();
+
+    if (selectedApp != null) {
+      await _launchUpiApp(selectedApp);
+    } else {
+      if (_type == PaymentType.credit) {
+        if (_type == PaymentType.credit && _account?.upiId != null) {
+          await _showQrFallbackDialog();
+        }
+      }
+      Navigator.of(context).pop();
+    }
+
     if (widget.onClose != null) {
       widget.onClose!(payment);
     }
-    globalEvent.emit("payment_update");
-    Navigator.of(context).pop();
   }
 
   Future<void> loadTags() async {
@@ -199,6 +230,7 @@ class _PaymentForm extends State<PaymentForm> {
     super.initState();
     populateState();
     loadTags();
+    _checkInstalledUpiApps();
 
     _accountEventListener = globalEvent.on("account_update", (data) {
       debugPrint("accounts are changed");
@@ -216,6 +248,9 @@ class _PaymentForm extends State<PaymentForm> {
     _accountEventListener?.cancel();
     _categoryEventListener?.cancel();
 
+    _titleController.dispose();
+    _descriptionController.dispose();
+
     super.dispose();
   }
 
@@ -224,7 +259,7 @@ class _PaymentForm extends State<PaymentForm> {
   Future<void> _pickImages() async {
     final ImagePicker picker = ImagePicker();
     final List<XFile> images = await picker.pickMultiImage();
-    
+
     if (images.isNotEmpty) {
       setState(() {
         _imagePaths.addAll(images.map((image) => image.path));
@@ -236,6 +271,145 @@ class _PaymentForm extends State<PaymentForm> {
     setState(() {
       _imagePaths.removeAt(index);
     });
+  }
+
+  // Scan UPI QR Code
+  Future<void> _scanUpiQr() async {
+    final rawQr = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const PaymentQrScanScreen(),
+      ),
+    );
+
+    if (rawQr == null) return;
+
+    final parsed = UpiQrParser.parse(rawQr);
+    if (parsed.isEmpty) return;
+
+    setState(() {
+      // Title ← Payee Name
+      if (parsed['pn'] != null && parsed['pn']!.isNotEmpty) {
+        _title = parsed['pn']!;
+        _titleController.text = _title;
+      }
+
+      // Description ← UPI ID
+      if (parsed['pa'] != null && parsed['pa']!.isNotEmpty) {
+        _description = parsed['pa']!;
+        _descriptionController.text = _description;
+      }
+
+      // Amount (only if empty)
+      if ((_amount == 0 || _amount.isNaN) && parsed['am'] != null) {
+        _amount = double.tryParse(parsed['am']!) ?? _amount;
+      }
+
+      // Transaction reference
+      _upiTxnId = parsed['tr'] ?? parsed['aid'];
+    });
+  }
+
+  //Check installed UPI apps
+  Future<void> _checkInstalledUpiApps() async {
+    final upiPay = UpiPay();
+
+    final apps = await upiPay.getInstalledUpiApplications();
+
+    setState(() {
+      installedUpiApps = apps;
+    });
+  }
+
+  // Show UPI App Chooser
+  Future<ApplicationMeta?> _showUpiAppChooser() async {
+    if (installedUpiApps.isEmpty) {
+      await _checkInstalledUpiApps();
+    }
+
+    if (installedUpiApps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No UPI apps found on this device')),
+      );
+      return null;
+    }
+
+    return showModalBottomSheet<ApplicationMeta>(
+      context: context,
+      builder: (_) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: installedUpiApps.map((app) {
+              final appName = app.upiApplication.toString().split('.').last;
+              return ListTile(
+                title: Text(appName),
+                onTap: () => Navigator.pop(context, app),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  // Launch UPI App for Payment
+  Future<void> _launchUpiApp(ApplicationMeta appMeta) async {
+    final upiPay = UpiPay();
+
+    await upiPay.initiateTransaction(
+      app: appMeta.upiApplication,
+      receiverUpiAddress: _description, // pa
+      receiverName: _title,
+      transactionRef:
+          _upiTxnId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      amount: _amount.toString(),
+      transactionNote: _title,
+    );
+  }
+
+  // Show QR Fallback Dialog
+  Future<void> _showQrFallbackDialog() async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text("No UPI apps found"),
+          content: const Text(
+            "Some UPI apps block direct redirection for security reasons.\n\n"
+            "You can download the QR code and pay using any UPI app.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+              },
+              child: const Text("Cancel", style: TextStyle(color: Colors.white),),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final path = await UpiQrDownloader.saveQrToDownloads(_upiQrKey);
+
+                if (path != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("QR saved successfully")),
+                  );
+                  await OpenFile.open(path);
+
+                  Navigator.of(ctx).pop(); // close dialog
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Failed to save QR")),
+                  );
+                }
+              },
+              child: const Text("Download QR", style: TextStyle(color: Colors.white),),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -324,19 +498,24 @@ class _PaymentForm extends State<PaymentForm> {
                       margin: const EdgeInsets.only(
                           left: 15, right: 15, bottom: 25),
                       child: TextFormField(
+                        controller: _titleController,
                         decoration: InputDecoration(
-                            filled: true,
-                            hintText: "Title",
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 15)),
-                        initialValue: _title,
+                          filled: true,
+                          hintText: "Title",
+                          suffixIcon: _type == PaymentType.debit
+                              ? IconButton(
+                                  icon: const Icon(Icons.qr_code_scanner),
+                                  onPressed: _scanUpiQr,
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 15),
+                        ),
                         onChanged: (text) {
-                          setState(() {
-                            _title = text;
-                          });
+                          _title = text;
                         },
                       ),
                     ),
@@ -344,22 +523,39 @@ class _PaymentForm extends State<PaymentForm> {
                       margin: const EdgeInsets.only(
                           left: 15, right: 15, bottom: 25),
                       child: TextFormField(
+                        controller: _descriptionController,
                         maxLines: null,
                         decoration: InputDecoration(
-                            filled: true,
-                            hintText: "Description",
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(15)),
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 15)),
-                        initialValue: _description,
+                          filled: true,
+                          hintText: "Description",
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 14, horizontal: 15),
+                        ),
                         onChanged: (text) {
-                          setState(() {
-                            _description = text;
-                          });
+                          _description = text;
                         },
                       ),
                     ),
+                    if (_upiTxnId != null)
+                      Container(
+                        margin: const EdgeInsets.only(
+                            left: 15, right: 15, bottom: 25),
+                        child: TextFormField(
+                          initialValue: _upiTxnId,
+                          enabled: false,
+                          decoration: InputDecoration(
+                            filled: true,
+                            labelText: "UPI Transaction ID",
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                          ),
+                        ),
+                      ),
+
                     Container(
                         margin: const EdgeInsets.only(
                             left: 15, right: 15, bottom: 25),
@@ -855,7 +1051,8 @@ class _PaymentForm extends State<PaymentForm> {
                     ),
                     // Image attachment section
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 15, vertical: 10),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -891,7 +1088,8 @@ class _PaymentForm extends State<PaymentForm> {
                                             Navigator.push(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (context) => ImageViewer(
+                                                builder: (context) =>
+                                                    ImageViewer(
                                                   imagePaths: _imagePaths,
                                                   initialIndex: index,
                                                 ),
@@ -902,17 +1100,20 @@ class _PaymentForm extends State<PaymentForm> {
                                             width: 80,
                                             height: 80,
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               border: Border.all(
                                                 color: Colors.grey.shade300,
                                               ),
                                             ),
                                             child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(8),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
                                               child: Image.file(
                                                 File(_imagePaths[index]),
                                                 fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stackTrace) {
+                                                errorBuilder: (context, error,
+                                                    stackTrace) {
                                                   return const Icon(
                                                     Icons.error,
                                                     color: Colors.red,
@@ -926,7 +1127,8 @@ class _PaymentForm extends State<PaymentForm> {
                                           top: -5,
                                           right: -5,
                                           child: IconButton(
-                                            onPressed: () => _removeImage(index),
+                                            onPressed: () =>
+                                                _removeImage(index),
                                             icon: Container(
                                               decoration: const BoxDecoration(
                                                 color: Colors.red,
@@ -950,21 +1152,24 @@ class _PaymentForm extends State<PaymentForm> {
                       ),
                     ),
                     // UPI QR Code for Income transactions
-                    if (_type == PaymentType.credit && 
-                        _account?.upiId != null && 
-                        _account!.upiId!.isNotEmpty && 
+                    if (_type == PaymentType.credit &&
+                        _account?.upiId != null &&
+                        _account!.upiId!.isNotEmpty &&
                         _amount > 0)
                       Container(
                         margin: const EdgeInsets.all(15),
-                        child: UpiQrCode(
-                          upiId: _account!.upiId!,
-                          payeeName: _account!.holderName.isNotEmpty 
-                              ? _account!.holderName 
-                              : _account!.name,
-                          amount: _amount,
-                          transactionNote: _title.isNotEmpty 
-                              ? _title 
-                              : 'Payment to ${_account!.name}',
+                        child: RepaintBoundary(
+                          key: _upiQrKey,
+                          child: UpiQrCode(
+                            upiId: _account!.upiId!,
+                            payeeName: _account!.holderName.isNotEmpty
+                                ? _account!.holderName
+                                : _account!.name,
+                            amount: _amount,
+                            transactionNote: _title.isNotEmpty
+                                ? _title
+                                : 'Payment to ${_account!.name}',
+                          ),
                         ),
                       ),
                   ],
@@ -979,9 +1184,7 @@ class _PaymentForm extends State<PaymentForm> {
                 labelStyle:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 isFullWidth: true,
-                onPressed: _amount > 0 &&
-                        _account != null &&
-                        _category != null
+                onPressed: _amount > 0 && _account != null && _category != null
                     ? () {
                         handleSaveTransaction(context);
                       }

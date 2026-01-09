@@ -206,7 +206,7 @@ class _CsvHeaderMappingDialogState extends State<CsvHeaderMappingDialog> {
                 filled: true,
                 fillColor: fieldMapping[field] != null
                     ? (isDarkMode
-                        ? Colors.green.shade900.withOpacity(0.3)
+                        ? Colors.green.shade900.withValues(alpha: 0.3)
                         : Colors.green.shade50)
                     : (isDarkMode ? Colors.grey[800] : Colors.grey.shade50),
               ),
@@ -287,7 +287,7 @@ class _CsvHeaderMappingDialogState extends State<CsvHeaderMappingDialog> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: isDarkMode
-                      ? Colors.blue.shade900.withOpacity(0.3)
+                      ? Colors.blue.shade900.withValues(alpha: 0.3)
                       : Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
@@ -319,7 +319,7 @@ class _CsvHeaderMappingDialogState extends State<CsvHeaderMappingDialog> {
                     const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                 decoration: BoxDecoration(
                   color: isDarkMode
-                      ? Colors.orange.shade900.withOpacity(0.3)
+                      ? Colors.orange.shade900.withValues(alpha: 0.3)
                       : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -373,7 +373,7 @@ class _CsvHeaderMappingDialogState extends State<CsvHeaderMappingDialog> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: isDarkMode
-                        ? Colors.orange.shade900.withOpacity(0.3)
+                        ? Colors.orange.shade900.withValues(alpha:0.3)
                         : Colors.orange.shade50,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
